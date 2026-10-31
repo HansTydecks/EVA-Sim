@@ -13,8 +13,8 @@ export const SPAWN = {
     scanner: [V(-0.36, 0.75, 0.02), 0.3],
     midi: [V(-0.43, 0.75, 0.1), 0.1],
     mic: [V(-0.42, 0.75, 0.02), 0.4],
-    webcam: [V(-0.28, 0.75, 0.1), 0],
-    printer: [V(-0.46, 0.75, -0.04), 0.2],
+    webcam: [V(-0.22, 0.75, 0.03), 0],
+    printer: [V(-0.5, 0.75, -0.1), 0.2],
     touch: [V(-0.44, 0.75, -0.02), 0.35],
 };
 
@@ -46,7 +46,8 @@ export class Progression {
         this.nextPressed = false;
         s.enter?.();
         // Eine laufende Rückmeldung (z. B. "Richtig!") noch zu Ende zeigen
-        if (this.interjectT <= 0) this.showHint();
+        // (Info-Schritte mit "Weiter"-Knopf aber immer sofort zeigen)
+        if (s.info || this.interjectT <= 0) { this.interjectT = 0; this.showHint(); }
         this.idle = 0;
         this.helpT = 0;
         g.guide.setTarget(s.guide ? s.guide() : null);
@@ -86,7 +87,8 @@ export class Progression {
         if (!s) return;
         if (this.interjectT > 0) {
             this.interjectT -= dt;
-            if (this.interjectT <= 0) this.showHint();
+            // (Info-Schritte mit "Weiter"-Knopf aber immer sofort zeigen)
+        if (s.info || this.interjectT <= 0) { this.interjectT = 0; this.showHint(); }
         }
         this.idle += dt;
         this.helpT = Math.max(0, this.helpT - dt);
