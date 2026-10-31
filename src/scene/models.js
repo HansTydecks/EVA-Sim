@@ -707,54 +707,158 @@ export function makePaper(texture) {
 }
 
 // ---------------- Hand (Handschuh) ----------------
+// Lokales Koordinatensystem: Finger zeigen nach -z, Handrücken nach +y, rechte Hand (Daumen bei -x).
+// Verjüngtes Fingerglied von 0 bis -len entlang z; beide Enden sind Halbkugeln, die Basis-Kugel bildet das Gelenk.
+function taperSegment(r0, r1, len) {
+    const geo = new THREE.CapsuleGeometry(r0, len, 5, 12);
+    geo.rotateX(-Math.PI / 2);          // Achse entlang z, Spitze bei -z
+    geo.translate(0, 0, -len / 2);
+    const p = geo.attributes.position;
+    const k = r1 / r0;
+    for (let i = 0; i < p.count; i++) {
+        const z = p.getZ(i);
+        const t = THREE.MathUtils.clamp(-z / len, 0, 1);
+        const s = 1 + (k - 1) * t;
+        p.setX(i, p.getX(i) * s);
+        p.setY(i, p.getY(i) * s * 0.92);  // leicht oval: Finger sind etwas flacher als breit
+    }
+    geo.computeVertexNormals();
+    return geo;
+}
+
+function palmGeometry() {
+    // Handumriss (x, s): s = vorwärts. Handgelenk schmaler, Knöchellinie breiter, alles gerundet.
+    const sh = new THREE.Shape();
+    sh.moveTo(-0.026, -0.046);
+    sh.lineTo(0.024, -0.046);
+    sh.quadraticCurveTo(0.033, -0.045, 0.036, -0.03);
+    sh.quadraticCurveTo(0.041, 0.0, 0.039, 0.03);
+    sh.quadraticCurveTo(0.036, 0.042, 0.022, 0.043);
+    sh.quadraticCurveTo(0.0, 0.046, -0.024, 0.043);
+    sh.quadraticCurveTo(-0.037, 0.041, -0.038, 0.028);
+    sh.quadraticCurveTo(-0.04, 0.0, -0.036, -0.03);
+    sh.quadraticCurveTo(-0.034, -0.045, -0.026, -0.046);
+    const geo = new THREE.ExtrudeGeometry(sh, {
+        depth: 0.004, bevelEnabled: true, bevelThickness: 0.0125, bevelSize: 0.0105, bevelSegments: 6, curveSegments: 10,
+    });
+    geo.rotateX(-Math.PI / 2);        // Umriss liegt jetzt in x/z, Dicke entlang y
+    geo.translate(0, -0.002, 0);
+    geo.scale(0.95, 1, 0.95);
+    // gewölbter Handrücken, flachere Handinnenfläche
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), y = p.getY(i);
+        p.setY(i, y - 3.2 * x * x + (y > 0 ? 0.004 * (1 - Math.min(1, Math.abs(x) / 0.045)) : 0));
+    }
+    geo.computeVertexNormals();
+    return geo;
+}
+
+const FINGERS = [
+    // x, Länge der drei Glieder, Radius Basis → Spitze, Fächerung, Vorversatz der Knöchel
+    { x: -0.0285, len: [0.031, 0.022, 0.018], r: [0.0094, 0.0085, 0.0077, 0.0069], fan: 0.08, z: -0.044 },
+    { x: -0.0095, len: [0.034, 0.024, 0.019], r: [0.0096, 0.0087, 0.0079, 0.0071], fan: 0.015, z: -0.047 },
+    { x: 0.0100, len: [0.032, 0.022, 0.018], r: [0.0092, 0.0083, 0.0076, 0.0068], fan: -0.05, z: -0.045 },
+    { x: 0.0275, len: [0.025, 0.017, 0.015], r: [0.0083, 0.0076, 0.0069, 0.0062], fan: -0.13, z: -0.039 },
+];
+
 export function makeHand({ ghost = false } = {}) {
     const g = new THREE.Group();
     const glove = ghost
         ? new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, emissive: 0xd67c9c, emissiveIntensity: 0.6, depthWrite: false })
-        : mat(0xffffff, { roughness: 0.55 });
-    const cuffMat = ghost ? glove : mat(0xe9a3bd);
-    const palm = new THREE.Mesh(new RoundedBoxGeometry(0.075, 0.028, 0.08, 2, 0.012), glove);
-    palm.castShadow = !ghost;
-    g.add(palm);
+        : mat(0xf4f2f5, { roughness: 0.62 });
+    const cuffMat = ghost ? glove : mat(0xe9a3bd, { roughness: 0.7 });
+    const seamMat = ghost ? glove : mat(0xd9c7d2, { roughness: 0.7 });
+    const add = (parent, mesh) => { mesh.castShadow = !ghost; parent.add(mesh); return mesh; };
+
+    add(g, new THREE.Mesh(palmGeometry(), glove));
+
+    // Finger: je drei Glieder an verschachtelten Gelenken
     const fingers = [];
-    const fx = [-0.027, -0.009, 0.009, 0.027];
-    const fl = [0.036, 0.044, 0.042, 0.032];
-    fx.forEach((x, i) => {
-        const pivot = new THREE.Group();
-        pivot.position.set(x, 0, -0.038);
-        const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.0085, fl[i], 4, 8), glove);
-        f.rotation.x = Math.PI / 2;
-        f.position.z = -fl[i] / 2 - 0.004;
-        f.castShadow = !ghost;
-        pivot.add(f);
-        g.add(pivot);
-        fingers.push(pivot);
-    });
+    for (const f of FINGERS) {
+        const knuckle = new THREE.Group();
+        knuckle.rotation.order = 'YXZ';
+        knuckle.position.set(f.x, 0.001 - 3.2 * f.x * f.x, f.z);
+        knuckle.rotation.y = f.fan;
+        g.add(knuckle);
+        const joints = [knuckle];
+        let parent = knuckle;
+        f.len.forEach((len, i) => {
+            add(parent, new THREE.Mesh(taperSegment(f.r[i], f.r[i + 1], len), glove));
+            if (i < 2) {
+                const j = new THREE.Group();
+                j.position.z = -len;
+                parent.add(j);
+                joints.push(j);
+                parent = j;
+            }
+        });
+        fingers.push({ joints, fan: f.fan });
+    }
+    // Ankerpunkt an der Zeigefingerspitze (leicht unterhalb = Fingerkuppe)
+    const tip = new THREE.Object3D();
+    tip.position.set(0, -0.003, -FINGERS[0].len[2] - FINGERS[0].r[3] * 0.85);
+    fingers[0].joints[2].add(tip);
+
+    // Daumen: Ballen + zwei Glieder
+    const ball = add(g, new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), glove));
+    ball.scale.set(0.017, 0.013, 0.026);
+    ball.position.set(-0.031, -0.006, 0.006);
+    ball.rotation.y = 0.5;
     const thumbPivot = new THREE.Group();
-    thumbPivot.position.set(-0.036, -0.002, -0.005);
-    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.009, 0.03, 4, 8), glove);
-    thumb.rotation.set(Math.PI / 2, 0, 0.9);
-    thumb.position.set(-0.014, 0, -0.012);
-    thumb.castShadow = !ghost;
-    thumbPivot.add(thumb);
+    thumbPivot.rotation.order = 'YXZ';
+    thumbPivot.position.set(-0.042, -0.006, -0.008);
     g.add(thumbPivot);
-    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.021, 0.023, 0.02, 16), cuffMat);
-    cuff.rotation.x = Math.PI / 2;
-    cuff.scale.set(1.25, 1, 0.55);
-    cuff.position.z = 0.05;
-    cuff.castShadow = !ghost;
-    g.add(cuff);
-    g.userData = { fingers, thumbPivot };
-    g.scale.setScalar(1.55);
+    add(thumbPivot, new THREE.Mesh(taperSegment(0.0118, 0.0106, 0.022), glove));
+    const thumbJoint = new THREE.Group();
+    thumbJoint.position.z = -0.022;
+    thumbPivot.add(thumbJoint);
+    add(thumbJoint, new THREE.Mesh(taperSegment(0.0106, 0.0092, 0.017), glove));
+
+    // Ziernähte auf dem Handrücken (wie bei Comic-Handschuhen)
+    if (!ghost) {
+        for (const x of [-0.015, 0, 0.015]) {
+            const s = new THREE.Mesh(new THREE.CapsuleGeometry(0.0013, 0.036, 2, 6), seamMat);
+            s.rotation.x = Math.PI / 2;
+            s.position.set(x, 0.0215 - 3.2 * x * x + 0.004 * (1 - Math.abs(x) / 0.045) - 0.0012, 0.008);
+            g.add(s);
+        }
+    }
+
+    // Stulpe mit Rollrand
+    const cuff = add(g, new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.033, 0.024, 28), cuffMat));
+    cuff.geometry.rotateX(Math.PI / 2);
+    cuff.scale.set(1, 0.6, 1);
+    cuff.position.set(0, 0.001, 0.058);
+    const rim = add(g, new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.005, 10, 28), cuffMat));
+    rim.scale.set(1, 0.6, 1);
+    rim.position.set(0, 0.001, 0.07);
+    g.scale.setScalar(1.3);
+
+    g.userData = { fingers, thumbPivot, thumbJoint, tip };
+    setHandGrip(g, 0);
     return g;
 }
 
-export function setHandGrip(hand, amount) {
-    // amount: 0 = offen, 1 = geschlossen
-    const { fingers, thumbPivot } = hand.userData;
-    fingers.forEach(f => { f.rotation.x = -amount * 1.25; });
-    thumbPivot.rotation.y = -amount * 0.6;
-    thumbPivot.rotation.x = -amount * 0.4;
+// grip: 0 = offen, 1 = Faust.  point: 0…1 = Zeigefinger gestreckt, übrige Finger eingerollt.
+// press: kurzes Antippen mit dem Zeigefinger (0…1).
+export function setHandGrip(hand, grip, point = 0, press = 0) {
+    const { fingers, thumbPivot, thumbJoint } = hand.userData;
+    fingers.forEach((f, i) => {
+        let c = 0.1 + 0.9 * grip;                         // leichte Grundkrümmung wirkt natürlicher
+        if (i === 0) c = c * (1 - point) + 0.02 * point + press * 0.18;
+        else c = Math.max(c, 0.1 + 0.9 * point);
+        const [a, b, d] = f.joints;
+        a.rotation.x = -c * 1.45;
+        b.rotation.x = -c * 1.6;
+        d.rotation.x = -c * 1.05;
+        a.rotation.y = f.fan * (1 - 0.6 * Math.max(grip, i === 0 ? 0 : point));
+    });
+    // Daumen legt sich beim Zeigen auf die eingerollten Finger, beim Greifen um den Gegenstand
+    const p = point * (1 - grip);
+    thumbPivot.rotation.y = 0.85 - 0.6 * grip - 1.15 * p;
+    thumbPivot.rotation.x = -0.3 - 0.55 * grip - 0.25 * p;
+    thumbJoint.rotation.x = -0.25 - 0.55 * grip - 0.35 * p;
 }
 
 // ---------------- Einkäufe (Scanner-Station) ----------------

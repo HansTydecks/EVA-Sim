@@ -356,3 +356,6 @@ html, body {
     .eva-dev { font-size: 12px; }
     .hud-title { display: none; }
 }
+
+/* Die Fingerspitze der 3D-Hand ist der Zeiger */
+canvas.hand-cursor { cursor: none; }
