@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/RoundedBoxGeometry.js';
+import { drawEan } from '../game/products.js';
 
 // Prozedurale Low-Poly-Modelle. Konvention: Ursprung = Unterseite Mitte, "vorne" = +z (zum Spieler).
 
@@ -105,20 +106,58 @@ export function makeMonitor(screenTexture) {
 // ---------------- Maus ----------------
 export function makeMouse() {
     const g = new THREE.Group();
-    const body = rbox(0.066, 0.034, 0.11, 0xe9ecf2, { r: 0.016, seg: 3 });
-    at(body, 0, 0.017, 0);
-    g.add(body);
-    const split = box(0.002, 0.006, 0.045, 0x9aa3b5);
-    at(split, 0, 0.034, -0.03);
-    g.add(split);
-    const wheel = cyl(0.007, 0.007, 0.008, 0x40444f, 14);
+    // flacher, ovaler Sockel
+    const base = cyl(1, 1, 0.009, 0x3a3f4b, 28);
+    base.scale.set(0.0295, 1, 0.052);
+    g.add(at(base, 0, 0.0045, 0));
+    // Gehäuse: gestreckte Halbkugel
+    const shellGeo = new THREE.SphereGeometry(1, 32, 14, 0, Math.PI * 2, 0, Math.PI / 2);
+    const shell = new THREE.Mesh(shellGeo, mat(0xd9dde6, { roughness: 0.45 }));
+    shell.scale.set(0.031, 0.025, 0.054);
+    at(shell, 0, 0.009, 0);
+    shell.castShadow = true;
+    g.add(shell);
+    // zwei gleich große Tasten vorne (vorne = -z), Spalt in der Mitte
+    const btnMat = mat(0xf2f4f8, { roughness: 0.4 });
+    const gap = 0.07;
+    const mkBtn = (phiStart) => {
+        const geo = new THREE.SphereGeometry(1, 16, 10, phiStart, Math.PI / 2 - gap, 0, 1.15);
+        const m = new THREE.Mesh(geo, btnMat);
+        m.scale.set(0.0314, 0.0254, 0.0546);
+        at(m, 0, 0.009, 0);
+        m.castShadow = true;
+        m.userData.baseY = 0.009;
+        g.add(m);
+        return m;
+    };
+    // x = -cos(phi)·sin(theta), z = sin(phi)·sin(theta) → vorne links: phi ∈ (3π/2, 2π)
+    const leftBtn = mkBtn(1.5 * Math.PI + gap);
+    const rightBtn = mkBtn(Math.PI);
+    // Fugen: zwischen den Tasten und am hinteren Tastenrand
+    const seamMat = mat(0x8a90a0);
+    const arc = (fn) => new THREE.CatmullRomCurve3(Array.from({ length: 9 }, (_, i) => fn(-1.15 + (i / 8) * 2.3)));
+    const seamA = new THREE.Mesh(new THREE.TubeGeometry(arc(t => new THREE.Vector3(-Math.sin(t) * 0.0318, 0.009 + Math.cos(t) * 0.0257, 0)), 16, 0.0007, 4), seamMat);
+    const seamB = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(Array.from({ length: 7 }, (_, i) => {
+        const t = (i / 6) * 1.15;
+        return new THREE.Vector3(0, 0.009 + Math.cos(t) * 0.0257, -Math.sin(t) * 0.0553);
+    })), 12, 0.0008, 4), seamMat);
+    g.add(seamA, seamB);
+    // Mausrad im Spalt
+    const wheel = cyl(0.0068, 0.0068, 0.006, 0x40444f, 16);
     wheel.rotation.z = Math.PI / 2;
-    at(wheel, 0, 0.034, -0.03);
+    at(wheel, 0, 0.0305, -0.026);
     g.add(wheel);
-    const leftBtn = box(0.03, 0.004, 0.045, 0xd6dbe5);
-    at(leftBtn, -0.0165, 0.033, -0.03);
-    g.add(leftBtn);
-    g.userData = { size: new THREE.Vector3(0.066, 0.036, 0.11), anchor: new THREE.Vector3(0, 0.015, -0.055), leftBtn };
+    const grip = new THREE.Mesh(new THREE.TorusGeometry(0.0068, 0.0012, 4, 16), mat(0x6a7080));
+    grip.rotation.y = Math.PI / 2;
+    at(grip, 0, 0.0305, -0.026);
+    g.add(grip);
+    // kleines Logo hinten
+    const logo = new THREE.Mesh(new THREE.CircleGeometry(0.0045, 16), new THREE.MeshBasicMaterial({ color: 0xd67c9c }));
+    logo.rotation.x = -Math.PI / 2 + 0.35;
+    at(logo, 0, 0.031, 0.022);
+    logo.userData.noRaycast = true;
+    g.add(logo);
+    g.userData = { size: new THREE.Vector3(0.064, 0.036, 0.11), anchor: new THREE.Vector3(0, 0.012, -0.054), leftBtn, rightBtn };
     return g;
 }
 
@@ -432,40 +471,201 @@ export function makeTouchscreen(texture) {
 // ---------------- Kleinkram ----------------
 export function makeMug() {
     const g = new THREE.Group();
-    const c = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.036, 0.1, 24, 1, true), mat(0xd67c9c, { side: THREE.DoubleSide }));
-    c.castShadow = true;
-    at(c, 0, 0.05, 0);
-    g.add(c);
-    g.add(at(cyl(0.036, 0.036, 0.004, 0xd67c9c, 24), 0, 0.002, 0));
-    const coffee = cyl(0.037, 0.037, 0.004, 0x4a2c1a, 24);
-    coffee.castShadow = false;
-    at(coffee, 0, 0.085, 0);
-    g.add(coffee);
-    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.008, 8, 16, Math.PI), mat(0xd67c9c));
-    handle.rotation.z = -Math.PI / 2;
-    at(handle, 0.04, 0.05, 0);
+    const H = 0.1, R = 0.041, Rb = 0.037;
+    const print = canvasTexture(512, 128, (ctx, w, h) => {
+        ctx.fillStyle = '#d67c9c'; ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = '#c4688a'; ctx.fillRect(0, h - 14, w, 6); ctx.fillRect(0, 8, w, 6);
+        // Aufdruck in der Mitte (u = 0.5) – wird nach vorne gedreht
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 46px Segoe UI, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('EVA', w / 2 + 18, h / 2 + 2);
+        ctx.fillStyle = '#ffe3ec';
+        ctx.beginPath();
+        const hx = w / 2 - 52, hy = h / 2 - 4;
+        ctx.moveTo(hx, hy + 14);
+        ctx.bezierCurveTo(hx - 26, hy - 4, hx - 10, hy - 22, hx, hy - 8);
+        ctx.bezierCurveTo(hx + 10, hy - 22, hx + 26, hy - 4, hx, hy + 14);
+        ctx.fill();
+    });
+    const outer = new THREE.Mesh(new THREE.CylinderGeometry(R, Rb, H, 32, 1, true),
+        new THREE.MeshStandardMaterial({ map: print, roughness: 0.35 }));
+    outer.rotation.y = Math.PI; // Aufdruck nach vorne (+z)
+    at(outer, 0, H / 2, 0);
+    outer.castShadow = true;
+    g.add(outer);
+    const inner = new THREE.Mesh(new THREE.CylinderGeometry(R - 0.004, Rb - 0.004, H - 0.006, 32, 1, true),
+        mat(0xfbeef3, { side: THREE.BackSide, roughness: 0.3 }));
+    at(inner, 0, H / 2 + 0.003, 0);
+    g.add(inner);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(R - 0.002, 0.0022, 6, 32), mat(0xe9a3bd, { roughness: 0.3 }));
+    rim.rotation.x = Math.PI / 2;
+    at(rim, 0, H, 0);
+    g.add(rim);
+    g.add(at(cyl(Rb, Rb - 0.002, 0.007, 0xc4688a, 32), 0, 0.0035, 0));
+    g.add(at(cyl(Rb - 0.004, Rb - 0.004, 0.002, 0xfbeef3, 24), 0, 0.007, 0));
+    // Henkel
+    const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(R - 0.004, 0.084, 0), new THREE.Vector3(R + 0.022, 0.082, 0),
+        new THREE.Vector3(R + 0.031, 0.056, 0), new THREE.Vector3(R + 0.022, 0.026, 0),
+        new THREE.Vector3(Rb - 0.003, 0.022, 0),
+    ]);
+    const handle = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.0062, 8, false), mat(0xd67c9c, { roughness: 0.35 }));
     handle.castShadow = true;
     g.add(handle);
-    g.userData = { size: new THREE.Vector3(0.09, 0.1, 0.08) };
+    // Kaffee mit Schaumrand
+    const foam = canvasTexture(128, 128, (ctx, w, h) => {
+        const gr = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w / 2);
+        gr.addColorStop(0, '#3b2213'); gr.addColorStop(0.72, '#5a341c'); gr.addColorStop(0.86, '#b98a5e'); gr.addColorStop(1, '#d9b48a');
+        ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h);
+    });
+    const coffee = new THREE.Mesh(new THREE.CircleGeometry(1, 28), new THREE.MeshStandardMaterial({ map: foam, roughness: 0.15 }));
+    coffee.rotation.x = -Math.PI / 2;
+    coffee.userData.noRaycast = true;
+    g.add(coffee);
+    // Dampf
+    const steamTex = canvasTexture(64, 64, (ctx, w, h) => {
+        const gr = ctx.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
+        gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h);
+    });
+    const steam = [];
+    for (let i = 0; i < 4; i++) {
+        const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: steamTex, transparent: true, opacity: 0, depthWrite: false }));
+        s.scale.setScalar(0.03);
+        s.userData.noRaycast = true;
+        s.raycast = () => {}; // Sprites brauchen sonst eine Kamera beim Raycasten
+        s.userData.phase = i / 4;
+        g.add(s);
+        steam.push(s);
+    }
+    g.userData = { size: new THREE.Vector3(0.09, H, 0.084), coffee, steam, fill: 1, rimY: H, innerR: R - 0.004, innerRb: Rb - 0.004 };
+    setMugFill(g, 1);
     return g;
 }
 
-export function makePlant() {
-    const g = new THREE.Group();
-    g.add(at(cyl(0.05, 0.04, 0.09, 0xc96f3b, 18), 0, 0.045, 0));
-    g.add(at(cyl(0.046, 0.046, 0.006, 0x3d2a1c, 18), 0, 0.088, 0));
-    const leafMat = mat(0x3fae5a);
-    for (let i = 0; i < 7; i++) {
-        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), leafMat);
-        leaf.scale.set(0.5, 1.6, 0.25);
-        const a = (i / 7) * Math.PI * 2;
-        leaf.position.set(Math.cos(a) * 0.025, 0.14 + (i % 2) * 0.02, Math.sin(a) * 0.025);
-        leaf.rotation.set(Math.sin(a) * 0.5, -a, Math.cos(a) * 0.5);
-        leaf.castShadow = true;
-        g.add(leaf);
+export function setMugFill(g, fill) {
+    const u = g.userData;
+    u.fill = fill;
+    const y = 0.012 + fill * 0.074;
+    const r = u.innerRb + (u.innerR - u.innerRb) * (y / u.rimY);
+    u.coffee.position.set(0, y, 0);
+    u.coffee.scale.setScalar(r);
+    u.coffee.visible = fill > 0.02;
+}
+
+// Säule mit Rippen (für den Kaktus): Kapsel-Profil, gedreht, dann radial gewellt
+function ribbedCapsule(r, h, ribs, color) {
+    const pts = [];
+    pts.push(new THREE.Vector2(0.0001, 0));
+    pts.push(new THREE.Vector2(r * 0.92, 0));
+    pts.push(new THREE.Vector2(r, h * 0.08));
+    for (let i = 0; i <= 8; i++) {
+        const a = (i / 8) * Math.PI / 2;
+        pts.push(new THREE.Vector2(Math.cos(a) * r + 0.0001, h - r + Math.sin(a) * r));
     }
-    g.userData = { size: new THREE.Vector3(0.1, 0.2, 0.1) };
+    const geo = new THREE.LatheGeometry(pts, ribs * 3);
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), z = p.getZ(i);
+        const a = Math.atan2(z, x);
+        const k = 1 + 0.11 * Math.cos(a * ribs);
+        p.setX(i, x * k); p.setZ(i, z * k);
+    }
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, mat(color, { roughness: 0.55 }));
+    m.castShadow = true;
+    return m;
+}
+
+function addSpines(group, r, h, ribs, y0 = 0) {
+    const pos = [];
+    for (let i = 0; i < ribs; i++) {
+        const a = (i / ribs) * Math.PI * 2;
+        for (let y = 0.012; y < h - r * 0.4; y += 0.016) {
+            pos.push(Math.cos(a) * r * 1.13, y0 + y + (i % 2) * 0.008, Math.sin(a) * r * 1.13);
+        }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xfff4d6, size: 0.0045 }));
+    pts.userData.noRaycast = true;
+    pts.raycast = () => {}; // Punkte hätten sonst einen riesigen Trefferradius
+    group.add(pts);
+}
+
+export function makeCactus() {
+    const g = new THREE.Group();
+    // Topf
+    const pot = new THREE.Group();
+    const terra = 0xc96f3b;
+    pot.add(at(cyl(0.044, 0.035, 0.078, terra, 24), 0, 0.039, 0));
+    pot.add(at(cyl(0.051, 0.049, 0.02, 0xd27a45, 24), 0, 0.083, 0));
+    pot.add(at(cyl(0.0445, 0.0425, 0.01, 0xf3e3c8, 24), 0, 0.045, 0));
+    pot.add(at(cyl(0.036, 0.034, 0.004, 0x9c5530, 24), 0, 0.002, 0));
+    g.add(pot);
+    // Erde + Kiesel
+    g.add(at(cyl(0.046, 0.046, 0.006, 0x3d2a1c, 24), 0, 0.09, 0));
+    const pebbleMat = mat(0xe8e2d6);
+    for (let i = 0; i < 7; i++) {
+        const peb = new THREE.Mesh(new THREE.SphereGeometry(0.006, 6, 5), pebbleMat);
+        const a = i * 2.3, rr = 0.03 + (i % 3) * 0.004;
+        peb.position.set(Math.cos(a) * rr, 0.094, Math.sin(a) * rr);
+        peb.scale.y = 0.6;
+        g.add(peb);
+    }
+    // Kaktus
+    const plant = new THREE.Group();
+    const green = 0x3e9b4f;
+    const body = ribbedCapsule(0.026, 0.15, 8, green);
+    plant.add(body);
+    addSpines(plant, 0.026, 0.15, 8);
+    // Arme: kurzes Querstück + senkrechter Teil
+    for (const [side, y, hh] of [[1, 0.055, 0.065], [-1, 0.085, 0.05]]) {
+        const arm = new THREE.Group();
+        const stub = ribbedCapsule(0.0135, 0.04, 6, green);
+        stub.rotation.z = -side * Math.PI / 2;
+        arm.add(stub);
+        const up = ribbedCapsule(0.0135, hh, 6, green);
+        up.position.set(side * 0.034, -0.002, 0);
+        arm.add(up);
+        const sp = new THREE.Group();
+        addSpines(sp, 0.0135, hh, 6);
+        sp.position.copy(up.position);
+        arm.add(sp);
+        arm.position.set(side * 0.012, y, 0);
+        arm.rotation.y = side * 0.4;
+        plant.add(arm);
+    }
+    // Blüte
+    const flower = new THREE.Group();
+    const petalMat = mat(0xff7fb0, { roughness: 0.5 });
+    for (let i = 0; i < 6; i++) {
+        const pe = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 6), petalMat);
+        const a = (i / 6) * Math.PI * 2;
+        pe.scale.set(1, 0.45, 0.6);
+        pe.position.set(Math.cos(a) * 0.008, 0, Math.sin(a) * 0.008);
+        pe.rotation.y = -a;
+        flower.add(pe);
+    }
+    flower.add(new THREE.Mesh(new THREE.SphereGeometry(0.0045, 8, 6), mat(0xffd43b)));
+    flower.position.set(0.004, 0.152, 0);
+    flower.rotation.z = -0.2;
+    plant.add(flower);
+    plant.position.y = 0.092;
+    g.add(plant);
+    g.userData = { size: new THREE.Vector3(0.11, 0.25, 0.104), pot, plant };
     return g;
+}
+
+// Scherbe eines Tontopfs (gebogenes Wandstück)
+export function makeShard(color = 0xc96f3b) {
+    const len = 0.5 + Math.random() * 0.7;
+    const geo = new THREE.CylinderGeometry(0.044, 0.04, 0.02 + Math.random() * 0.025, 4, 1, true, 0, len);
+    geo.translate(-Math.sin(len / 2) * 0.042, 0, -Math.cos(len / 2) * 0.042);
+    const m = new THREE.Mesh(geo, mat(color, { side: THREE.DoubleSide }));
+    m.castShadow = true;
+    m.userData.noRaycast = true;
+    return m;
 }
 
 export function makeDuck() {
@@ -555,4 +755,113 @@ export function setHandGrip(hand, amount) {
     fingers.forEach(f => { f.rotation.x = -amount * 1.25; });
     thumbPivot.rotation.y = -amount * 0.6;
     thumbPivot.rotation.x = -amount * 0.4;
+}
+
+// ---------------- Einkäufe (Scanner-Station) ----------------
+function stdMat(tex, opts = {}) { return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5, ...opts }); }
+
+export function makeProduct(def) {
+    const g = new THREE.Group();
+    let size;
+    if (def.model === 'bottle') {
+        // PET-Flasche mit Etikett
+        const pts = [[0.0001, 0], [0.028, 0], [0.032, 0.006], [0.032, 0.03], [0.029, 0.04], [0.032, 0.05], [0.032, 0.125],
+            [0.028, 0.15], [0.016, 0.178], [0.012, 0.19], [0.012, 0.198]].map(([x, y]) => new THREE.Vector2(x, y));
+        const bottle = new THREE.Mesh(new THREE.LatheGeometry(pts, 24),
+            new THREE.MeshStandardMaterial({ color: 0x3a0d06, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.92 }));
+        bottle.castShadow = true;
+        g.add(bottle);
+        const tex = canvasTexture(512, 128, (ctx, w, h) => {
+            ctx.fillStyle = '#d7262e'; ctx.fillRect(0, 0, w, h);
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 7;
+            ctx.beginPath(); ctx.moveTo(0, 92);
+            for (let x = 0; x <= w; x += 8) ctx.lineTo(x, 92 + Math.sin(x / 40) * 10);
+            ctx.stroke();
+            ctx.fillStyle = '#ffffff'; ctx.font = 'italic bold 58px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('Cola', w * 0.25, 52);
+            drawEan(ctx, def.ean, w * 0.56, 12, 190, 100);
+        });
+        const label = new THREE.Mesh(new THREE.CylinderGeometry(0.0326, 0.0326, 0.066, 28, 1, true), stdMat(tex));
+        label.rotation.y = -Math.PI * 0.62; // Strichcode zeigt grob zum Spieler
+        at(label, 0, 0.088, 0);
+        g.add(label);
+        g.add(at(cyl(0.0135, 0.0135, 0.014, 0xd7262e, 16), 0, 0.2, 0));
+        size = new THREE.Vector3(0.066, 0.207, 0.066);
+    } else if (def.model === 'carton') {
+        const W = 0.07, H = 0.15;
+        const side = canvasTexture(256, 512, (ctx, w, h) => {
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+            ctx.fillStyle = '#2f7cf6'; ctx.fillRect(0, h - 120, w, 120);
+            ctx.fillStyle = '#111';
+            for (const [x, y, r] of [[60, 110, 28], [180, 80, 20], [150, 190, 34], [50, 250, 18]]) { ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.7, 0.4, 0, Math.PI * 2); ctx.fill(); }
+            ctx.fillStyle = '#2f7cf6'; ctx.font = 'bold 56px Segoe UI, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('MILCH', w / 2, 340);
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 34px Segoe UI, sans-serif'; ctx.fillText('frisch · 1 l', w / 2, h - 50);
+        });
+        const front = canvasTexture(256, 512, (ctx, w, h) => {
+            ctx.drawImage(side.image, 0, 0);
+            drawEan(ctx, def.ean, 20, 150, 216, 120);
+        });
+        const top = mat(0xf4f6fb);
+        const body = new THREE.Mesh(new THREE.BoxGeometry(W, H, W), [stdMat(side), stdMat(side), top, top, stdMat(front), stdMat(side)]);
+        at(body, 0, H / 2, 0);
+        body.castShadow = true;
+        g.add(body);
+        // Giebel
+        const gable = new THREE.Group();
+        const tri = new THREE.Shape([new THREE.Vector2(-W / 2, 0), new THREE.Vector2(W / 2, 0), new THREE.Vector2(0, 0.028)]);
+        for (const z of [-W / 2, W / 2]) {
+            const m = new THREE.Mesh(new THREE.ShapeGeometry(tri), mat(0xf4f6fb, { side: THREE.DoubleSide }));
+            m.position.set(0, H, z);
+            gable.add(m);
+        }
+        for (const sx of [-1, 1]) {
+            const slope = box(Math.hypot(W / 2, 0.028) + 0.002, 0.002, W, 0xe8ecf4);
+            slope.position.set(sx * W / 4, H + 0.014, 0);
+            slope.rotation.z = -sx * Math.atan2(0.028, W / 2);
+            gable.add(slope);
+        }
+        gable.add(at(box(0.004, 0.012, W + 0.004, 0xe8ecf4), 0, H + 0.032, 0));
+        g.add(gable);
+        size = new THREE.Vector3(W, H + 0.035, W);
+    } else if (def.model === 'bar') {
+        const W = 0.16, H = 0.016, D = 0.075;
+        const topTex = canvasTexture(512, 240, (ctx, w, h) => {
+            ctx.fillStyle = '#6b3fa0'; ctx.fillRect(0, 0, w, h);
+            ctx.fillStyle = '#ffffff'; ctx.font = 'bold 64px Segoe UI, sans-serif'; ctx.textBaseline = 'middle';
+            ctx.fillText('SCHOKO', 26, 72);
+            ctx.font = '30px Segoe UI, sans-serif'; ctx.fillText('Vollmilch · 100 g', 30, 135);
+            ctx.fillStyle = '#4b2b14';
+            for (let i = 0; i < 3; i++) { ctx.fillRect(30 + i * 52, 165, 44, 44); }
+            drawEan(ctx, def.ean, 300, 120, 196, 108);
+        });
+        const side = mat(0x6b3fa0, { roughness: 0.35 });
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [side, side, stdMat(topTex, { roughness: 0.35 }), side, side, side]);
+        at(bar, 0, H / 2, 0);
+        bar.castShadow = true;
+        g.add(bar);
+        size = new THREE.Vector3(W, H, D);
+    } else {
+        // Saftpäckchen mit Strohhalm
+        const W = 0.06, H = 0.1, D = 0.04;
+        const tex = canvasTexture(256, 420, (ctx, w, h) => {
+            ctx.fillStyle = '#ffd43b'; ctx.fillRect(0, 0, w, h);
+            ctx.fillStyle = '#2fae5f'; ctx.fillRect(0, 0, w, 70);
+            ctx.fillStyle = '#e03131'; ctx.beginPath(); ctx.arc(w / 2, 150, 52, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#2fae5f'; ctx.fillRect(w / 2 - 4, 88, 8, 22);
+            ctx.fillStyle = '#7a4a12'; ctx.font = 'bold 40px Segoe UI, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('APFEL', w / 2, 250);
+            drawEan(ctx, def.ean, 22, 280, 212, 120);
+        });
+        const plain = mat(0xffd43b);
+        const body = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [plain, plain, mat(0x2fae5f), plain, stdMat(tex), plain]);
+        at(body, 0, H / 2, 0);
+        body.castShadow = true;
+        g.add(body);
+        const straw = cyl(0.0025, 0.0025, 0.05, 0xff6fa8, 8);
+        straw.rotation.z = 0.25;
+        at(straw, 0.012, H + 0.02, 0);
+        g.add(straw);
+        size = new THREE.Vector3(W, H + 0.04, D);
+    }
+    g.userData.size = size;
+    return g;
 }

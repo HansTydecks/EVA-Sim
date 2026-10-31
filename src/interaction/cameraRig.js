@@ -8,7 +8,7 @@ export class CameraRig {
         this.base = new THREE.Vector3(0, 1.32, 0.86);
         this.yaw = 0;
         this.yawTarget = 0;
-        this.pitch = -0.5;
+        this.pitch = -0.43;
         this.minYaw = -0.3;
         this.maxYaw = 1.12;
         this.boxYaw = 0.98;

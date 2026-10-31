@@ -7,7 +7,7 @@ const _v = new THREE.Vector3();
 
 // Greifbares Objekt mit Physik (Gerät oder Gegenstand)
 export class PhysItem {
-    constructor(game, object, { name, mass = 0.5, kind = 'item', emoji = '' } = {}) {
+    constructor(game, object, { name, mass = 0.5, kind = 'item', emoji = '', com = 1 } = {}) {
         this.game = game;
         this.object = object;
         this.name = name;
@@ -21,7 +21,7 @@ export class PhysItem {
         this.half = new THREE.Vector3(s.x / 2, s.y / 2, s.z / 2);
         this.mass = mass;
         game.scene.add(object);
-        this.body = game.physics.addDynamic(object, this.half, mass);
+        this.body = game.physics.addDynamic(object, this.half, mass, { com });
         this.yaw = 0;
         this.liftY = 0.05;
     }
@@ -32,9 +32,7 @@ export class PhysItem {
     setPosition(p, yaw = null) {
         this.object.position.copy(p);
         if (yaw !== null) this.object.rotation.set(0, yaw, 0);
-        this.body.position.set(p.x, p.y, p.z);
-        const q = this.object.quaternion;
-        this.body.quaternion.set(q.x, q.y, q.z, q.w);
+        this.game.physics.placeBody(this.body, this.object);
         this.body.velocity.set(0, 0, 0);
         this.body.angularVelocity.set(0, 0, 0);
         this.body.wakeUp();
@@ -67,9 +65,7 @@ export class PhysItem {
         this.constrain?.(p);
         this.object.position.copy(p);
         this.object.rotation.set(0, this.yaw, 0);
-        this.body.position.set(p.x, p.y, p.z);
-        const q = this.object.quaternion;
-        this.body.quaternion.set(q.x, q.y, q.z, q.w);
+        this.game.physics.placeBody(this.body, this.object);
     }
 
     release(vel) {
@@ -84,11 +80,29 @@ export class PhysItem {
         return target.copy(this.object.position).setY(this.object.position.y + this.half.y * 2);
     }
 
-    update() {
-        // aus der Welt gefallen? zurücksetzen
-        if (!this.held && !this.sorted && this.visible !== false && !this.locked && this.object.position.y < -0.5) {
-            this.setPosition(this.home ? this.home.clone().setY(this.home.y + 0.3) : new THREE.Vector3(0, 1.0, 0.1));
-        }
+    update(dt = 1 / 60) {
+        // Vom Tisch gefallen? Nach kurzer Zeit zurück auf den Tisch teleportieren.
+        if (this.held || this.sorted || this.visible === false || this.locked || this.noRespawn) { this.floorT = 0; return; }
+        const y = this.object.position.y;
+        if (y < -0.5) { this.respawnToDesk(); return; }
+        // Boden (y = 0) – die Kartonbank liegt bei 0.42, der Tisch bei 0.75
+        if (y < 0.3) {
+            this.floorT = (this.floorT || 0) + dt;
+            if (this.floorT > 0.8) this.respawnToDesk();
+        } else this.floorT = 0;
+    }
+
+    respawnToDesk() {
+        this.floorT = 0;
+        const g = this.game;
+        const from = this.object.position.clone();
+        const home = (this.home || new THREE.Vector3(-0.2, 0.75, 0.05)).clone();
+        g.guide?.burst(from.setY(Math.max(from.y, 0) + 0.05), [0xffffff, 0xd67c9c, 0xffd43b], 14, 0.6);
+        this.setPosition(home.clone().setY(home.y + 0.25), this.homeYaw ?? 0);
+        g.guide?.burst(home.setY(home.y + 0.12), [0xffffff, 0xffd43b], 16, 0.7);
+        g.audio.plop();
+        this.onRespawn?.();
+        g.emit('respawned', this);
     }
 }
 
@@ -159,10 +173,12 @@ export class Device extends PhysItem {
         const object = BUILDERS[id]();
         object.position.copy(position);
         object.rotation.y = yaw;
-        super(game, object, { name: def.name, emoji: def.emoji, mass: def.mass, kind: 'device' });
+        // Geräte haben einen schweren Fuß: Schwerpunkt tief, damit sie nicht ständig umkippen
+        super(game, object, { name: def.name, emoji: def.emoji, mass: def.mass, kind: 'device', com: 0.3 });
         this.id = id;
         this.def = def;
         this.home = position.clone();
+        this.homeYaw = yaw;
         this.sortable = false;
         this.plug = def.port ? new Plug(game, this, def.port, def.cable) : null;
         this.isFixed = isStatic;
@@ -243,19 +259,29 @@ export class Device extends PhysItem {
         }
     }
 
+    // Stecker neben das Gerät legen (Richtung Computer)
+    placePlugNear(pos) {
+        const tower = this.game.devices.tower.object.position;
+        const dir = new THREE.Vector3(tower.x - pos.x, 0, tower.z - pos.z).normalize();
+        const pp = pos.clone().addScaledVector(dir, Math.min(0.22, this.def.cable * 0.3));
+        pp.z = Math.min(pp.z + 0.06, 0.3);
+        pp.y = 0.75 + 0.013;
+        this.plug.placeRest(pp, dir);
+    }
+
+    onRespawn() {
+        if (this.plug && !this.plug.hidden && !this.plugged && !this.plug.held) this.placePlugNear(this.home);
+    }
+
     spawn(pos, yaw = 0) {
         this.home = pos.clone();
+        this.homeYaw = yaw;
         this.visible = true;
         this.object.visible = true;
         this.game.physics.makeDynamic(this.body);
         this.setPosition(pos.clone().setY(pos.y + 0.45), yaw);
         if (this.plug) {
-            const tower = this.game.devices.tower.object.position;
-            const dir = new THREE.Vector3(tower.x - pos.x, 0, tower.z - pos.z).normalize();
-            const pp = pos.clone().addScaledVector(dir, Math.min(0.22, this.def.cable * 0.3));
-            pp.z = Math.min(pp.z + 0.06, 0.3);
-            pp.y = 0.75 + 0.013;
-            this.plug.placeRest(pp, dir);
+            this.placePlugNear(pos);
             this.plug.object.visible = true;
             this.plug.cable.visible = true;
         }
@@ -275,14 +301,27 @@ export class Device extends PhysItem {
 
     update(dt) {
         super.update(dt);
-        if (this.plug && this.visible) this.plug.update(dt);
+        if (this.plug && this.visible) {
+            // loser Stecker auf dem Boden? Zurück neben das Gerät
+            const pl = this.plug;
+            if (!pl.hidden && !pl.held && !pl.port && pl.restPos.y < 0.3 && this.object.position.y > 0.5) {
+                pl.floorT = (pl.floorT || 0) + dt;
+                if (pl.floorT > 0.8) {
+                    pl.floorT = 0;
+                    this.game.guide?.burst(pl.restPos.clone().setY(0.05), [0xffffff], 8, 0.4);
+                    this.placePlugNear(this.object.position);
+                    this.game.audio.plop();
+                }
+            } else pl.floorT = 0;
+            pl.update(dt);
+        }
     }
 }
 
 export function createItem(game, kind, pos, yaw = 0) {
     const builders = {
         mug: [M.makeMug, 'Tasse', '☕', 0.3],
-        plant: [M.makePlant, 'Pflanze', '🪴', 0.6],
+        cactus: [M.makeCactus, 'Kaktus', '🌵', 0.6],
         duck: [M.makeDuck, 'Quietscheente', '🦆', 0.15],
     };
     const [fn, name, emoji, mass] = builders[kind];
@@ -291,6 +330,7 @@ export function createItem(game, kind, pos, yaw = 0) {
     obj.rotation.y = yaw;
     const it = new PhysItem(game, obj, { name, emoji, mass });
     it.home = pos.clone();
+    it.homeYaw = yaw;
     it.id = kind;
     return it;
 }

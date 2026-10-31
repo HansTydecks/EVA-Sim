@@ -1,5 +1,6 @@
 import { roundRect, button, inRect, TOPBAR } from './os.js';
 import { MIDI_NOTES } from '../scene/models.js';
+import { PRODUCTS, PRODUCT_BY_EAN, formatEan, euro } from '../game/products.js';
 
 const W = 1024, H = 640;
 const FONT = 'Segoe UI, sans-serif';
@@ -219,192 +220,231 @@ class TypingApp {
     }
 }
 
-// ---------------------------------------------------------------- Scanner
-export const SCAN_CODES = {
-    '12345': { note: 'G', freq: 392.0, color: '#ff6b6b' },
-    '67890': { note: 'A', freq: 440.0, color: '#ffa94d' },
-    'ABCDE': { note: 'H', freq: 493.88, color: '#69db7c' },
-    'HELLO': { note: 'D', freq: 587.33, color: '#4dabf7' },
-    'WORLD': { note: 'E', freq: 659.25, color: '#9775fa' },
-};
 
+// ---------------------------------------------------------------- Kasse (Barcode-Scanner)
 class ScannerApp {
     constructor(os) {
         this.os = os;
-        this.title = 'Kassen-Programm';
-        this.found = new Set();
+        this.title = 'Kasse';
+        this.cart = [];
         this.last = null;
+        this.lastNew = false;
         this.flash = 0;
         this.done = false;
         this.doneT = 0;
     }
+    get found() { return new Set(this.cart.map(p => p.ean)); }
     scan(code) {
-        const c = SCAN_CODES[code];
-        if (!c) return;
-        this.last = code;
+        const p = PRODUCT_BY_EAN[code];
+        if (!p) return false;
+        this.last = p;
         this.flash = 1;
-        this.os.game.audio.note(c.freq, 0.9);
-        const isNew = !this.found.has(code);
-        this.found.add(code);
-        if (isNew && this.found.size === 5 && !this.done) {
+        const isNew = !this.cart.includes(p);
+        this.lastNew = isNew;
+        if (isNew) this.cart.push(p);
+        this.os.game.audio.kaching();
+        if (isNew && this.cart.length === PRODUCTS.length && !this.done) {
             this.done = true;
-            this.os.showBanner('Alle 5 Codes gescannt! 🎉', '#2fae5f', 3);
-            // kleine Melodie zur Belohnung
-            ['12345', '67890', 'ABCDE', 'HELLO', 'WORLD'].forEach((k, i) => this.os.game.audio.tone(SCAN_CODES[k].freq, 0.3, { type: 'triangle', vol: 0.18, bus: 'pc', delay: 0.9 + i * 0.16 }));
+            this.os.showBanner('Alles gescannt – danke für Ihren Einkauf! 🎉', '#2fae5f', 3);
+            [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this.os.game.audio.tone(f, 0.3, { type: 'triangle', vol: 0.16, bus: 'pc', delay: 0.5 + i * 0.13 }));
         }
         return isNew;
     }
     update(dt) {
-        this.flash = Math.max(0, this.flash - dt * 1.5);
+        this.flash = Math.max(0, this.flash - dt * 1.2);
         if (this.done) {
             this.doneT += dt;
-            if (this.doneT > 2.2 && !this.reported) { this.reported = true; this.os.appDone('scanner'); }
+            if (this.doneT > 2.4 && !this.reported) { this.reported = true; this.os.appDone('scanner'); }
         }
     }
     draw(ctx) {
-        title(ctx, 'Scanne die Strichcodes!', `${this.found.size} von 5 Codes gefunden`);
-        // Anzeige
-        ctx.fillStyle = this.flash > 0 ? `rgba(47,174,95,${0.3 + this.flash * 0.6})` : 'rgba(0,0,0,0.35)';
-        roundRect(ctx, 212, 160, 600, 200, 24); ctx.fill();
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        title(ctx, '🛒 Kasse – scanne deine Einkäufe!', `${this.cart.length} von ${PRODUCTS.length} Einkäufen gescannt`);
+        ctx.textBaseline = 'middle';
+        // linke Seite: was der Scanner gerade erkannt hat
+        const x0 = 40, y0 = 160, w0 = 560, h0 = 420;
+        ctx.fillStyle = this.flash > 0 ? `rgba(47,174,95,${0.25 + this.flash * 0.5})` : 'rgba(0,0,0,0.35)';
+        roundRect(ctx, x0, y0, w0, h0, 24); ctx.fill();
+        ctx.textAlign = 'center';
         if (this.last) {
-            const c = SCAN_CODES[this.last];
-            ctx.fillStyle = '#fff';
-            ctx.font = `bold 76px Courier New, monospace`;
-            ctx.fillText(this.last, W / 2, 235);
-            ctx.font = `bold 32px ${FONT}`;
-            ctx.fillStyle = c.color;
-            ctx.fillText(`♪ Ton ${c.note}`, W / 2, 315);
+            const p = this.last;
+            ctx.fillStyle = '#b8f5c9'; ctx.font = `bold 30px ${FONT}`;
+            ctx.fillText('✅ Barcode erkannt:', x0 + w0 / 2, y0 + 40);
+            ctx.fillStyle = '#ffffff'; ctx.font = `bold 46px Courier New, monospace`;
+            ctx.fillText(formatEan(p.ean), x0 + w0 / 2, y0 + 96);
+            ctx.fillStyle = '#e0c5d0'; ctx.font = `24px ${FONT}`;
+            ctx.fillText('⬇ Computer sucht die Nummer in seiner Liste ⬇', x0 + w0 / 2, y0 + 150);
+            ctx.font = `110px ${FONT}`;
+            ctx.fillText(p.emoji, x0 + w0 / 2, y0 + 250);
+            ctx.fillStyle = '#ffffff'; ctx.font = `bold 40px ${FONT}`;
+            ctx.fillText(p.name, x0 + w0 / 2, y0 + 340);
+            ctx.fillStyle = '#ffd43b'; ctx.font = `bold 36px ${FONT}`;
+            ctx.fillText(this.lastNew ? euro(p.price) : '✓ ist schon im Einkaufswagen', x0 + w0 / 2, y0 + 388);
         } else {
-            ctx.fillStyle = '#e0c5d0';
-            ctx.font = `30px ${FONT}`;
-            ctx.fillText('Bereit … warte auf einen Code', W / 2, 260);
+            ctx.fillStyle = '#ffffff'; ctx.font = `bold 34px ${FONT}`;
+            ctx.fillText('Bereit …', x0 + w0 / 2, y0 + 150);
+            ctx.fillStyle = '#e0c5d0'; ctx.font = `26px ${FONT}`;
+            ctx.fillText('Halte den Scanner über eine Ware.', x0 + w0 / 2, y0 + 210);
+            ctx.fillText('Der rote Laser liest den Strichcode.', x0 + w0 / 2, y0 + 250);
+            ctx.font = `80px ${FONT}`;
+            ctx.fillText(PRODUCTS.map(p => p.emoji).join(' '), x0 + w0 / 2, y0 + 340);
         }
-        // Liste
-        const keys = Object.keys(SCAN_CODES);
-        keys.forEach((k, i) => {
-            const x = 112 + i * 166, y = 420;
-            const ok = this.found.has(k);
-            ctx.fillStyle = ok ? SCAN_CODES[k].color : 'rgba(255,255,255,0.1)';
-            roundRect(ctx, x, y, 140, 110, 14); ctx.fill();
-            ctx.fillStyle = ok ? '#fff' : 'rgba(255,255,255,0.4)';
-            ctx.font = `bold 28px Courier New, monospace`;
-            ctx.fillText(ok ? k : '?????', x + 70, y + 40);
-            ctx.font = `bold 26px ${FONT}`;
-            ctx.fillText(ok ? `♪ ${SCAN_CODES[k].note}` : '', x + 70, y + 80);
+        // rechte Seite: Kassenbon
+        const x1 = 630, y1 = 160, w1 = 354, h1 = 420;
+        ctx.fillStyle = '#fffdf6';
+        roundRect(ctx, x1, y1, w1, h1, 12); ctx.fill();
+        ctx.fillStyle = '#4a1f3a'; ctx.font = `bold 28px ${FONT}`;
+        ctx.fillText('Kassenbon 🧾', x1 + w1 / 2, y1 + 36);
+        ctx.fillStyle = '#ccc'; ctx.fillRect(x1 + 20, y1 + 62, w1 - 40, 2);
+        ctx.font = `24px ${FONT}`;
+        this.cart.forEach((p, i) => {
+            const y = y1 + 96 + i * 46;
+            ctx.textAlign = 'left'; ctx.fillStyle = '#333';
+            ctx.fillText(`${p.emoji} ${p.name}`, x1 + 20, y);
+            ctx.textAlign = 'right';
+            ctx.fillText(euro(p.price), x1 + w1 - 20, y);
         });
+        for (let i = this.cart.length; i < PRODUCTS.length; i++) {
+            ctx.textAlign = 'left'; ctx.fillStyle = '#bbb';
+            ctx.fillText('· · ·', x1 + 20, y1 + 96 + i * 46);
+        }
+        const sum = this.cart.reduce((a, p) => a + p.price, 0);
+        ctx.fillStyle = '#4a1f3a'; ctx.fillRect(x1 + 20, y1 + h1 - 80, w1 - 40, 3);
+        ctx.font = `bold 30px ${FONT}`;
+        ctx.textAlign = 'left'; ctx.fillText('SUMME', x1 + 20, y1 + h1 - 42);
+        ctx.textAlign = 'right'; ctx.fillText(euro(sum), x1 + w1 - 20, y1 + h1 - 42);
     }
 }
 
-// ---------------------------------------------------------------- Runner (MIDI-Keyboard)
-class RunnerApp {
+// ---------------------------------------------------------------- Tonleiter (MIDI-Keyboard)
+const SCALE = [0, 1, 2, 3, 4, 5, 6, 7];
+const ENTCHEN = [0, 1, 2, 3, 4, 4, 5, 5, 5, 5, 4, 5, 5, 5, 5, 4, 3, 3, 3, 3, 2, 2, 1, 1, 1, 1, 0];
+
+class ScaleApp {
     constructor(os) {
         this.os = os;
-        this.title = 'Noten-Läufer';
-        this.lanes = 8;
-        this.top = TOPBAR + 80;
-        this.laneH = (H - this.top - 20) / this.lanes;
-        this.playerLane = 3;
-        this.playerY = this.laneY(3);
-        this.obstacles = [];
-        this.spawnT = 1.2;
-        this.score = 0;
-        this.goal = 12;
-        this.started = false;
-        this.hitFlash = 0;
+        this.title = 'Tonleiter';
+        this.phase = 'scale';
+        this.seq = SCALE;
+        this.pos = 0;
         this.keyFlash = new Array(8).fill(0);
+        this.okFlash = 0;
+        this.wrong = null;
+        this.wrongT = 0;
         this.done = false;
         this.doneT = 0;
-        this.speed = 230;
+        this.t = 0;
     }
-    laneY(i) { return this.top + (this.lanes - 1 - i) * this.laneH + this.laneH / 2; }
+    get targetNote() { return this.pos < this.seq.length ? this.seq[this.pos] : null; }
     noteOn(i) {
-        this.playerLane = i;
         this.keyFlash[i] = 1;
-        this.started = true;
         this.os.game.audio.note(MIDI_NOTES[i].freq, 0.6);
+        const tgt = this.targetNote;
+        if (tgt === null) return;
+        if (i === tgt) {
+            this.pos++;
+            this.okFlash = 1;
+            this.wrongT = 0;
+            if (this.pos >= this.seq.length) this.finish();
+        } else {
+            this.wrong = i;
+            this.wrongT = 2.2;
+        }
+    }
+    finish() {
+        const a = this.os.game.audio;
+        if (this.phase === 'scale') {
+            this.done = true;
+            this.os.showBanner('Tonleiter geschafft! 🎉', '#2fae5f', 3);
+            [0, 2, 4, 7].forEach((n, k) => a.tone(MIDI_NOTES[n].freq, 0.5, { type: 'triangle', vol: 0.15, bus: 'pc', delay: 0.7 + k * 0.05 }));
+        } else {
+            this.os.showBanner('Alle meine Entchen – super gespielt! 🦆', '#2fae5f', 3.5);
+            a.success();
+            this.phase = 'free';
+        }
     }
     update(dt) {
+        this.t += dt;
         this.keyFlash = this.keyFlash.map(v => Math.max(0, v - dt * 3));
-        this.hitFlash = Math.max(0, this.hitFlash - dt * 2);
-        this.playerY += (this.laneY(this.playerLane) - this.playerY) * Math.min(1, dt * 14);
-        if (this.done) {
+        this.okFlash = Math.max(0, this.okFlash - dt * 2.5);
+        this.wrongT = Math.max(0, this.wrongT - dt);
+        if (this.done && this.phase === 'scale') {
             this.doneT += dt;
-            if (this.doneT > 1.5 && !this.reported) { this.reported = true; this.os.appDone('runner'); }
-            return;
-        }
-        if (!this.started) return;
-        this.spawnT -= dt;
-        if (this.spawnT <= 0) {
-            this.spawnT = Math.max(1.0, 1.9 - this.score * 0.05);
-            const len = 1 + Math.floor(Math.random() * 3);
-            let start = Math.floor(Math.random() * (this.lanes - len + 1));
-            // nicht immer genau auf den Spieler
-            const lanes = [];
-            for (let i = 0; i < len; i++) lanes.push(start + i);
-            this.obstacles.push({ x: W + 40, lanes, passed: false });
-        }
-        const px = 150;
-        for (const o of this.obstacles) {
-            o.x -= this.speed * dt * (1 + this.score * 0.02);
-            const curLane = Math.round(this.lanes - 1 - (this.playerY - this.top - this.laneH / 2) / this.laneH);
-            if (!o.passed && !o.hit && o.x < px + 26 && o.x + 40 > px - 26 && o.lanes.includes(curLane)) {
-                o.hit = true;
-                this.hitFlash = 1;
-                this.score = Math.max(0, this.score - 2);
-                this.os.game.audio.tone(140, 0.25, { type: 'sawtooth', vol: 0.12, bus: 'pc' });
-            }
-            if (!o.passed && o.x + 40 < px - 26) {
-                o.passed = true;
-                if (!o.hit) {
-                    this.score++;
-                    if (this.score >= this.goal) {
-                        this.done = true;
-                        this.os.showBanner(`${this.goal} Punkte geschafft! 🎉`, '#2fae5f', 3);
-                    }
-                }
+            if (this.doneT > 1.6 && !this.reported) {
+                this.reported = true;
+                this.os.appDone('scale');
+                // freiwillige Bonus-Aufgabe
+                this.phase = 'bonus';
+                this.seq = ENTCHEN;
+                this.pos = 0;
             }
         }
-        this.obstacles = this.obstacles.filter(o => o.x > -80);
     }
     draw(ctx) {
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#fff';
-        ctx.font = `bold 30px ${FONT}`;
-        ctx.fillText(`Weiche aus!  Punkte: ${this.score} / ${this.goal}`, W / 2, TOPBAR + 36);
-        for (let i = 0; i < this.lanes; i++) {
-            const y = this.laneY(i) - this.laneH / 2;
-            ctx.fillStyle = i % 2 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.08)';
-            ctx.fillRect(0, y, W, this.laneH);
-            const n = MIDI_NOTES[i];
-            ctx.fillStyle = n.color;
-            ctx.globalAlpha = 0.45 + this.keyFlash[i] * 0.55;
-            roundRect(ctx, 8, y + 4, 62, this.laneH - 8, 10); ctx.fill();
+        const head = this.phase === 'scale' ? ['🎹 Spiele die Tonleiter!', 'Von unten nach oben: C D E F G A H C – die leuchtende Taste ist die nächste']
+            : this.phase === 'bonus' ? ['🦆 Bonus: Alle meine Entchen', 'Freiwillig! Spiel das Lied nach – die leuchtende Taste zeigt dir den Weg']
+                : ['🎵 Freies Spiel', 'Spiel, was du möchtest!'];
+        title(ctx, head[0], head[1]);
+        // Notenzeile
+        const sx = 90, sw = W - 180, gap = 22, eLine = 330;
+        ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 2;
+        for (let k = 0; k < 5; k++) { ctx.beginPath(); ctx.moveTo(sx, eLine - k * gap); ctx.lineTo(sx + sw, eLine - k * gap); ctx.stroke(); }
+        ctx.fillStyle = '#ffffff'; ctx.font = `bold 120px serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        ctx.fillText('𝄞', sx - 6, eLine + 28);
+        const STEP = [-2, -1, 0, 1, 2, 3, 4, 5]; // Halbe Linienabstände über der unteren E-Linie
+        const show = 10;
+        const first = this.seq.length <= show ? 0 : Math.min(Math.max(0, this.pos - 3), this.seq.length - show);
+        const vis = this.seq.slice(first, first + show);
+        const nx0 = sx + 110, ndx = (sw - 140) / Math.max(vis.length - 1, 1);
+        vis.forEach((n, k) => {
+            const idx = first + k;
+            const x = nx0 + k * ndx;
+            const y = eLine - STEP[n] * gap / 2;
+            const isCur = idx === this.pos;
+            const doneN = idx < this.pos;
+            // Hilfslinie für C
+            if (n === 0) { ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.moveTo(x - 24, eLine + gap); ctx.lineTo(x + 24, eLine + gap); ctx.stroke(); }
+            if (n === 7) { ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.moveTo(x - 24, eLine - 5 * gap); ctx.lineTo(x + 24, eLine - 5 * gap); ctx.stroke(); }
+            const r = isCur ? 15 + Math.sin(this.t * 8) * 2.5 : 13;
+            ctx.fillStyle = doneN ? '#2fae5f' : MIDI_NOTES[n].color;
+            ctx.globalAlpha = doneN || isCur ? 1 : 0.55;
+            ctx.beginPath(); ctx.ellipse(x, y, r * 1.25, r, -0.35, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(x + r * 1.15, y); ctx.lineTo(x + r * 1.15, y - 62); ctx.stroke();
             ctx.globalAlpha = 1;
-            ctx.fillStyle = '#fff';
-            ctx.font = `bold 26px ${FONT}`;
-            ctx.fillText(n.name, 39, y + this.laneH / 2);
-        }
-        for (const o of this.obstacles) {
-            for (const l of o.lanes) {
-                const y = this.laneY(l) - this.laneH / 2;
-                ctx.fillStyle = o.hit ? '#7a3a3a' : '#e74c3c';
-                roundRect(ctx, o.x, y + 6, 40, this.laneH - 12, 8); ctx.fill();
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = doneN ? '#b8f5c9' : '#ffffff';
+            ctx.font = `bold ${isCur ? 28 : 22}px ${FONT}`;
+            ctx.fillText(doneN ? '✓' : MIDI_NOTES[n].name, x, eLine + 62);
+            if (isCur) { ctx.fillStyle = '#ffd43b'; ctx.font = `bold 30px ${FONT}`; ctx.fillText('▼', x, eLine - 5.5 * gap - 22); }
+        });
+        // Klaviatur unten
+        const kx = 152, ky = 440, kw = 90, kh = 150;
+        const tgt = this.targetNote;
+        MIDI_NOTES.forEach((n, i) => {
+            const x = kx + i * kw;
+            const isT = i === tgt;
+            ctx.fillStyle = this.keyFlash[i] > 0 ? n.color : '#fafafa';
+            roundRect(ctx, x + 3, ky, kw - 6, kh, 10); ctx.fill();
+            if (isT) {
+                ctx.strokeStyle = '#ffd43b'; ctx.lineWidth = 6 + Math.sin(this.t * 8) * 2;
+                roundRect(ctx, x + 3, ky, kw - 6, kh, 10); ctx.stroke();
             }
+            ctx.fillStyle = n.color;
+            ctx.beginPath(); ctx.arc(x + kw / 2, ky + kh - 70, 13, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#4a1f3a'; ctx.font = `bold 30px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(n.name, x + kw / 2, ky + kh - 32);
+            ctx.font = `16px ${FONT}`; ctx.fillStyle = '#888';
+            ctx.fillText(`Taste ${n.key}`, x + kw / 2, ky + 20);
+        });
+        if (this.wrongT > 0 && this.wrong !== null && tgt !== null) {
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            roundRect(ctx, 262, 380, 500, 50, 14); ctx.fill();
+            ctx.fillStyle = '#ffd6d6'; ctx.font = `bold 24px ${FONT}`; ctx.textAlign = 'center';
+            ctx.fillText(`Das war ${MIDI_NOTES[this.wrong].name} – gesucht ist ${MIDI_NOTES[tgt].name}`, W / 2, 405);
         }
-        // Spieler
-        ctx.fillStyle = this.hitFlash > 0 ? '#ff7777' : '#ffd43b';
-        ctx.beginPath(); ctx.arc(150, this.playerY, 24, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#4a1f3a';
-        ctx.beginPath(); ctx.arc(158, this.playerY - 6, 4, 0, Math.PI * 2); ctx.fill();
-        if (!this.started) {
-            ctx.fillStyle = 'rgba(0,0,0,0.55)';
-            roundRect(ctx, 212, 260, 600, 120, 20); ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.font = `bold 32px ${FONT}`;
-            ctx.fillText('Spiele eine Note zum Starten!', W / 2, 300);
-            ctx.font = `24px ${FONT}`;
-            ctx.fillText('Jede Taste bringt dich auf eine andere Bahn', W / 2, 345);
+        if (this.okFlash > 0) {
+            ctx.fillStyle = `rgba(47,174,95,${this.okFlash * 0.25})`;
+            ctx.fillRect(0, TOPBAR, W, H - TOPBAR);
         }
     }
 }
@@ -649,7 +689,7 @@ export class CameraApp {
 class TouchInfoApp {
     constructor(os) { this.os = os; this.title = 'Touchscreen'; }
     draw(ctx) {
-        title(ctx, 'Der Touchscreen ist verbunden!', 'Schau auf den kleinen Bildschirm und tippe die Blasen an');
+        title(ctx, 'Der Touchscreen ist verbunden!', 'Schau auf den kleinen Bildschirm: Tippen, Wischen, Ziehen');
         ctx.font = `bold 120px ${FONT}`;
         ctx.textAlign = 'center';
         ctx.fillStyle = '#e092b0';
@@ -661,7 +701,7 @@ export const APPS = {
     memory: MemoryApp,
     typing: TypingApp,
     scanner: ScannerApp,
-    runner: RunnerApp,
+    scale: ScaleApp,
     sing: SingApp,
     camera: CameraApp,
     touchinfo: TouchInfoApp,
@@ -669,46 +709,129 @@ export const APPS = {
 
 // ---------------------------------------------------------------- Touch-App auf dem Touchscreen-Gerät
 export class TouchApp {
+    // Drei kurze Teile, die typische Touch-Gesten zeigen: Tippen → Wischen → Ziehen
     constructor(game, canvas) {
         this.game = game;
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
         this.w = canvas.width; this.h = canvas.height;
+        this.phase = 'tap';
         this.bubbles = [];
         this.pops = [];
         this.trail = [];
         this.spawnT = 0;
         this.popped = 0;
-        this.goal = 8;
+        this.goal = 6;
+        // Wischen
+        this.photos = ['🐶', '🌈', '🚀', '🍕'];
+        this.photo = 0;
+        this.slide = 0;      // Verschiebung beim Wischen (px)
+        this.swipeStart = null;
+        this.swipes = 0;
+        this.swipeGoal = 3;
+        // Ziehen
+        this.shapes = [];
+        this.dragging = null;
+        this.placed = 0;
+        this.phaseT = 0;
         this.done = false;
         this.doneT = 0;
         this.on = false;
     }
+    get progressText() {
+        if (this.done) return 'Super! Alle drei Gesten geschafft 🎉';
+        if (this.phase === 'tap') return `1/3 TIPPEN: Bring die Blasen zum Platzen (${this.popped}/${this.goal})`;
+        if (this.phase === 'swipe') return `2/3 WISCHEN: Zieh das Bild nach links (${this.swipes}/${this.swipeGoal})`;
+        return `3/3 ZIEHEN: Schieb jede Form in ihr Loch (${this.placed}/3)`;
+    }
+    setPhase(p) {
+        this.phase = p;
+        this.phaseT = 0;
+        this.game.audio.tone(660, 0.12, { type: 'triangle', vol: 0.16, bus: 'pc' });
+        this.game.audio.tone(990, 0.2, { type: 'triangle', vol: 0.14, bus: 'pc', delay: 0.1 });
+        if (p === 'drag') {
+            const w = this.w;
+            this.shapes = [
+                { shape: 'circle', color: '#ff6b6b', x: 80, y: 250, hx: w - 110, hy: 105 },
+                { shape: 'square', color: '#4dabf7', x: 190, y: 270, hx: w - 230, hy: 230 },
+                { shape: 'triangle', color: '#69db7c', x: 300, y: 245, hx: w - 350, hy: 105 },
+            ];
+            this.shapes.forEach(sh => { sh.sx = sh.x; sh.sy = sh.y; });
+        }
+        this.game.emit('touchPhase', p);
+    }
     touch(u, v) {
-        if (!this.on) return;
+        // erster Kontakt (Klick)
+        if (!this.on || this.done) return;
         const x = u * this.w, y = (1 - v) * this.h;
-        this.trail.push({ x, y, t: 0.8, c: `hsl(${(performance.now() / 5) % 360},90%,65%)` });
-        for (const b of this.bubbles) {
-            if (!b.dead && Math.hypot(b.x - x, b.y - y) < b.r + 10) {
-                b.dead = true;
-                this.popped++;
-                this.pops.push({ x: b.x, y: b.y, r: b.r, t: 0.4, c: b.c });
-                this.game.audio.tone(500 + Math.random() * 500, 0.12, { type: 'sine', vol: 0.2, bus: 'pc', slideTo: 1200 });
-                this.game.activity();
-                if (this.popped >= this.goal && !this.done) this.done = true;
-                break;
+        this.trail.push({ x, y, t: 0.6, c: `hsl(${(performance.now() / 5) % 360},90%,65%)` });
+        this.game.activity();
+        if (this.phase === 'tap') {
+            for (const b of this.bubbles) {
+                if (!b.dead && Math.hypot(b.x - x, b.y - y) < b.r + 12) {
+                    b.dead = true;
+                    this.popped++;
+                    this.pops.push({ x: b.x, y: b.y, r: b.r, t: 0.4, c: b.c });
+                    this.game.audio.tone(500 + Math.random() * 500, 0.12, { type: 'sine', vol: 0.2, bus: 'pc', slideTo: 1200 });
+                    if (this.popped >= this.goal) this.setPhase('swipe');
+                    break;
+                }
             }
+        } else if (this.phase === 'swipe') {
+            this.swipeStart = { x, slide: this.slide };
+        } else if (this.phase === 'drag') {
+            this.dragging = this.shapes.find(sh => !sh.placed && Math.hypot(sh.x - x, sh.y - y) < 46) || null;
+            if (this.dragging) { this.dragging.ox = this.dragging.x - x; this.dragging.oy = this.dragging.y - y; }
+        }
+    }
+    move(u, v) {
+        // Finger wird über den Bildschirm gezogen
+        if (!this.on || this.done) return;
+        const x = u * this.w, y = (1 - v) * this.h;
+        this.trail.push({ x, y, t: 0.5, c: `hsl(${(performance.now() / 5) % 360},90%,65%)` });
+        if (this.phase === 'tap') this.touch(u, v);
+        else if (this.phase === 'swipe' && this.swipeStart) this.slide = Math.min(40, x - this.swipeStart.x);
+        else if (this.phase === 'drag' && this.dragging) {
+            this.dragging.x = x + this.dragging.ox;
+            this.dragging.y = y + this.dragging.oy;
+        }
+    }
+    up() {
+        if (!this.on || this.done) return;
+        if (this.phase === 'swipe' && this.swipeStart) {
+            if (this.slide < -this.w * 0.2) {
+                this.swipes++;
+                this.photo = (this.photo + 1) % this.photos.length;
+                this.slide += this.w; // neues Bild rutscht von rechts herein
+                this.game.audio.noise(0.12, { vol: 0.12, freq: 2500, q: 0.8, bus: 'pc' });
+                if (this.swipes >= this.swipeGoal) setTimeout(() => this.setPhase('drag'), 500);
+            }
+            this.swipeStart = null;
+        }
+        if (this.phase === 'drag' && this.dragging) {
+            const sh = this.dragging;
+            if (Math.hypot(sh.x - sh.hx, sh.y - sh.hy) < 42) {
+                sh.placed = true; sh.x = sh.hx; sh.y = sh.hy;
+                this.placed++;
+                this.game.audio.tone(880, 0.15, { type: 'triangle', vol: 0.18, bus: 'pc' });
+                if (this.placed >= 3) this.done = true;
+            } else { sh.x = sh.sx; sh.y = sh.sy; this.game.audio.tone(220, 0.12, { type: 'sine', vol: 0.12, bus: 'pc' }); }
+            this.dragging = null;
         }
     }
     update(dt) {
         if (!this.on) return;
-        this.spawnT -= dt;
-        if (this.spawnT <= 0 && !this.done) {
-            this.spawnT = 0.9;
-            this.bubbles.push({ x: 40 + Math.random() * (this.w - 80), y: this.h + 40, r: 30 + Math.random() * 18, vy: 50 + Math.random() * 40, c: `hsl(${Math.random() * 360},80%,65%)` });
+        this.phaseT += dt;
+        if (this.phase === 'tap') {
+            this.spawnT -= dt;
+            if (this.spawnT <= 0) {
+                this.spawnT = 0.85;
+                this.bubbles.push({ x: 40 + Math.random() * (this.w - 80), y: this.h + 40, r: 30 + Math.random() * 18, vy: 50 + Math.random() * 40, c: `hsl(${Math.random() * 360},80%,65%)` });
+            }
         }
-        for (const b of this.bubbles) b.y -= b.vy * dt;
+        for (const b of this.bubbles) b.y -= b.vy * dt * (this.phase === 'tap' ? 1 : 4);
         this.bubbles = this.bubbles.filter(b => !b.dead && b.y > -60);
+        if (!this.swipeStart) this.slide += (0 - this.slide) * Math.min(1, dt * 10);
         this.pops.forEach(p => p.t -= dt);
         this.pops = this.pops.filter(p => p.t > 0);
         this.trail.forEach(p => p.t -= dt);
@@ -725,10 +848,50 @@ export class TouchApp {
         gr.addColorStop(0, '#1d3557'); gr.addColorStop(1, '#3e1e2e');
         ctx.fillStyle = gr;
         ctx.fillRect(0, 0, w, h);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        if (this.phase === 'swipe' && !this.done) {
+            // Fotoalbum
+            for (const k of [-1, 0, 1]) {
+                const x = w / 2 + this.slide + k * w;
+                const idx = (this.photo + k + this.photos.length) % this.photos.length;
+                ctx.fillStyle = '#fffdf6';
+                roundRect(ctx, x - 130, 70, 260, 200, 16); ctx.fill();
+                ctx.font = '120px Segoe UI, sans-serif';
+                ctx.fillText(this.photos[idx], x, 172);
+            }
+            const a = 0.5 + Math.sin(this.phaseT * 4) * 0.4;
+            ctx.globalAlpha = a; ctx.fillStyle = '#ffd43b'; ctx.font = 'bold 40px Segoe UI, sans-serif';
+            ctx.fillText('👆 ⬅⬅', w / 2, 300);
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#fff'; ctx.font = '18px Segoe UI, sans-serif';
+            ctx.fillText(`Foto ${this.photo + 1} von ${this.photos.length}`, w / 2, 56);
+        }
+        if (this.phase === 'drag' || this.done) {
+            for (const sh of this.shapes) {
+                // Loch
+                ctx.save();
+                ctx.globalAlpha = 0.9;
+                ctx.setLineDash([8, 6]);
+                ctx.strokeStyle = sh.color; ctx.lineWidth = 4;
+                shapePath(ctx, sh.shape, sh.hx, sh.hy, 38); ctx.stroke();
+                ctx.restore();
+            }
+            for (const sh of this.shapes) {
+                ctx.fillStyle = sh.color;
+                shapePath(ctx, sh.shape, sh.x, sh.y, sh === this.dragging ? 40 : 34); ctx.fill();
+                if (sh.placed) { ctx.fillStyle = '#fff'; ctx.font = 'bold 28px Segoe UI, sans-serif'; ctx.fillText('✓', sh.x, sh.y + 2); }
+            }
+            if (!this.done && !this.dragging) {
+                ctx.globalAlpha = 0.5 + Math.sin(this.phaseT * 4) * 0.4;
+                ctx.fillStyle = '#ffd43b'; ctx.font = 'bold 30px Segoe UI, sans-serif';
+                ctx.fillText('👆 halten und ziehen ➜', w / 2, 175);
+                ctx.globalAlpha = 1;
+            }
+        }
         for (const p of this.trail) {
-            ctx.globalAlpha = p.t;
+            ctx.globalAlpha = Math.max(0, p.t);
             ctx.fillStyle = p.c;
-            ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2); ctx.fill();
         }
         ctx.globalAlpha = 1;
         for (const b of this.bubbles) {
@@ -746,9 +909,18 @@ export class TouchApp {
             ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + (0.4 - p.t) * 3), 0, Math.PI * 2); ctx.stroke();
         }
         ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(0, 0, w, 40);
         ctx.fillStyle = '#fff';
-        ctx.font = `bold 30px ${FONT}`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-        ctx.fillText(this.done ? 'Super! 🎉' : `Tippe die Blasen an: ${this.popped} / ${this.goal}`, w / 2, 12);
+        ctx.font = `bold 21px ${FONT}`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(this.progressText, w / 2, 21);
     }
+}
+
+function shapePath(ctx, shape, cx, cy, r) {
+    ctx.beginPath();
+    if (shape === 'circle') ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    else if (shape === 'square') ctx.rect(cx - r * 0.85, cy - r * 0.85, r * 1.7, r * 1.7);
+    else { ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy + r * 0.8); ctx.lineTo(cx - r, cy + r * 0.8); ctx.closePath(); }
 }
