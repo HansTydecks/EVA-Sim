@@ -6,6 +6,7 @@ const NO_LOCK = new URLSearchParams(location.search).has('nolock');
 const _v = new THREE.Vector3();
 const _n = new THREE.Vector3();
 const _m3 = new THREE.Matrix3();
+const _tip = new THREE.Vector3();
 
 // Die echte Maus steuert eine 3D-Hand ("Greifhand").
 // Linke Taste halten = greifen, loslassen = ablegen/werfen. Auf eingesteckte Geräte klicken = benutzen.
@@ -27,6 +28,10 @@ export class HandController {
         this.hoverHit = null;
         this.pressed = null;   // Objekt, das gerade "geklickt" (nicht gegriffen) wird, z.B. Touchscreen
         this.grip = 0;
+        this.pointAmt = 1;
+        this.tilt = -0.3;
+        this.anchorBlend = 1;
+        this.yawOff = 0.85;
         this.mouseMode = false;
         this.pad = { u: 0, v: 0 };
         this.hist = [];
@@ -35,7 +40,7 @@ export class HandController {
 
         // Zielmarkierung auf der Oberfläche (hilft beim Einschätzen der Tiefe)
         this.marker = new THREE.Mesh(
-            new THREE.RingGeometry(0.018, 0.026, 28),
+            new THREE.RingGeometry(0.011, 0.016, 28),
             new THREE.MeshBasicMaterial({ color: 0xd67c9c, transparent: true, opacity: 0.85, depthWrite: false }),
         );
         this.marker.renderOrder = 5;
@@ -253,7 +258,6 @@ export class HandController {
             }
             if (this.pressed?.drag && hit) this.pressed.drag(hit);
             if (this.held) targetGrip = 1;
-            else if (this.pressed) targetGrip = 0.6;
             this.marker.visible = !!hit;
             g.hud.tooltip(this.held ? null : this.hovered, this.pointer);
         }
@@ -268,33 +272,67 @@ export class HandController {
         this.marker.material.color.setHex(this.held ? 0x2fae5f : 0xd67c9c);
 
         // Gehaltenes Objekt mitführen
-        const handPos = _v.copy(this.point).addScaledVector(this.normal, 0.055);
+        let anchorTip = true;          // Zeigefingerspitze sitzt genau auf dem Zielpunkt
+        const handPos = _v.copy(this.point).addScaledVector(this.normal, 0.004);
         if (this.held) {
+            anchorTip = false;
             this.held.holdAt(this.point.clone(), this.normal.clone());
             const o = this.held.object;
             if (this.held.kind === 'plug') {
-                handPos.copy(o.position).add(_n.set(0, 0.045, 0));
+                handPos.copy(o.position).add(_n.set(0, 0.05, 0));
             } else {
                 handPos.copy(o.position);
-                handPos.y += (this.held.half?.y || 0.03) * 2 + 0.025;
+                handPos.y += (this.held.half?.y || 0.03) * 2 + 0.03;
             }
             this.hist.push({ t: time, p: this.point.clone() });
             while (this.hist.length > 2 && time - this.hist[0].t > 0.1) this.hist.shift();
+        } else if (this.mouseMode) {
+            // Zeigefinger liegt auf der linken Maustaste
+            const m = g.devices.mouse.object;
+            handPos.copy(m.position).add(_n.set(-0.013, 0.031, -0.03));
         }
 
-        // Hand platzieren: Finger zeigen vom Spieler weg
+        // Pose: zeigen (Standard), offen (über Greifbarem), Faust (gehalten), locker auf der Maus
+        const canGrab = !this.mouseMode && !this.held && !this.pressed && this.hovered?.canGrab?.();
+        if (this.clickAnim > 0) this.clickAnim -= dt;
+        const press = this.clickAnim > 0 ? Math.sin((this.clickAnim / 0.15) * Math.PI) : 0;
+        let targetPoint = 1, targetTilt = -0.3;
+        if (this.held) { targetPoint = 0; targetTilt = 0.05; }
+        else if (this.mouseMode) { targetPoint = 0.25; targetTilt = -0.32; }
+        else if (canGrab) { targetPoint = 0; targetGrip = 0.28; targetTilt = -0.4; }
+        const kk = Math.min(1, dt * 14);
+        this.grip += (targetGrip - this.grip) * Math.min(1, dt * 16);
+        this.pointAmt += (targetPoint - this.pointAmt) * kk;
+        this.tilt += (targetTilt - this.tilt) * kk;
+        setHandGrip(this.hand, this.grip, this.pointAmt, press * (this.mouseMode ? 1.4 : 0.6));
+
+        // Ausrichtung: wie eine rechte Hand, die von rechts unten in die Szene greift
         const camYaw = g.rig.yaw;
-        const back = _n.set(Math.sin(camYaw), 0, Math.cos(camYaw));
-        this.hand.position.copy(handPos).addScaledVector(back, this.held ? 0.0 : 0.07);
-        if (this.clickAnim > 0) { this.clickAnim -= dt; this.hand.position.y -= 0.012; }
+        this.yawOff += ((this.mouseMode ? 0.12 : this.held ? 0.45 : 0.85) - this.yawOff) * kk;
+        this.hand.rotation.set(0, camYaw + this.yawOff, 0);
+        this.hand.rotateX(this.tilt - press * 0.12);
+        this.hand.rotateZ(this.mouseMode ? 0 : -0.25);
+
+        // Position: Fingerspitze auf den Punkt legen (bzw. Hand über den gehaltenen Gegenstand)
+        this.anchorBlend += ((anchorTip ? 1 : 0) - this.anchorBlend) * Math.min(1, dt * 18);
+        const blend = this.anchorBlend;
+        this.hand.position.copy(handPos);
+        if (blend > 0.001) {
+            this.hand.updateMatrixWorld(true);
+            this.hand.userData.tip.getWorldPosition(_tip);
+            this.hand.position.addScaledVector(_tip.sub(this.hand.position), -blend);
+        }
+
         // Maustaste der virtuellen Maus sichtbar drücken
         const lb = this.game.devices.mouse?.object.userData.leftBtn;
         if (lb) lb.position.y = (this.mouseMode && this.clickAnim > 0) ? lb.userData.baseY - 0.0018 : lb.userData.baseY;
-        // wie eine rechte Hand, die von rechts unten in die Szene greift
-        this.hand.rotation.set(0, camYaw + (this.mouseMode ? 0.15 : 0.45), 0);
-        this.hand.rotateX(this.mouseMode ? -0.1 : 0.05);
-        this.grip += (targetGrip - this.grip) * Math.min(1, dt * 16);
-        setHandGrip(this.hand, this.grip);
+
+        // echten Mauszeiger über der Szene ausblenden – die Fingerspitze ist der Zeiger
+        const hideCursor = this.enabled && (this.mouseMode || (this.marker.visible && this.pointer.inside));
+        if (hideCursor !== this._cursorHidden) {
+            this._cursorHidden = hideCursor;
+            this.dom.classList.toggle('hand-cursor', hideCursor);
+        }
     }
 }
 
