@@ -210,8 +210,7 @@ export class HandController {
             p.z += this.pad.v * pad.hz;
             m.object.position.copy(p);
             m.object.rotation.set(0, 0, 0);
-            m.body.position.set(p.x, p.y, p.z);
-            m.body.quaternion.set(0, 0, 0, 1);
+            g.physics.placeBody(m.body, m.object);
             g.computer.setCursorNorm((this.pad.u + 1) / 2, (this.pad.v + 1) / 2);
             this.pointTarget.set(p.x, p.y + 0.035, p.z + 0.01);
             this.normalTarget.set(0, 1, 0);
@@ -288,6 +287,9 @@ export class HandController {
         const back = _n.set(Math.sin(camYaw), 0, Math.cos(camYaw));
         this.hand.position.copy(handPos).addScaledVector(back, this.held ? 0.0 : 0.07);
         if (this.clickAnim > 0) { this.clickAnim -= dt; this.hand.position.y -= 0.012; }
+        // Maustaste der virtuellen Maus sichtbar drücken
+        const lb = this.game.devices.mouse?.object.userData.leftBtn;
+        if (lb) lb.position.y = (this.mouseMode && this.clickAnim > 0) ? lb.userData.baseY - 0.0018 : lb.userData.baseY;
         // wie eine rechte Hand, die von rechts unten in die Szene greift
         this.hand.rotation.set(0, camYaw + (this.mouseMode ? 0.15 : 0.45), 0);
         this.hand.rotateX(this.mouseMode ? -0.1 : 0.05);

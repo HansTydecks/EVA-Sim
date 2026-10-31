@@ -18,15 +18,23 @@ Mikrofon-Freigabe benötigt – alles passiert virtuell.
 | 1 | Bildschirm (HDMI, gelb) | einstecken → Computer startet |
 | 2 | Maus (USB, blau) | Memory mit dem Mauszeiger |
 | 3 | Tastatur (USB) | „HALLO COMPUTER“ auf der echten Tastatur tippen |
-| 4 | Lautsprecher (grün) + Barcode-Scanner (USB) | 5 Strichcodes scannen → Töne |
-| 5 | MIDI-Keyboard (USB) | Noten-Läufer: mit C–H ausweichen, 12 Punkte |
+| 4 | Lautsprecher (grün) + Barcode-Scanner (USB) | Kasse: Cola, Milch, Schokolade und Saft scannen → Ware, Preis und Summe am Bildschirm |
+| 5 | MIDI-Keyboard (USB) | Tonleiter C D E F G A H C spielen (nächste Taste leuchtet), danach freiwillig „Alle meine Entchen“ |
 | 6 | Studiomikrofon (rosa) | ein C „singen“ (Leertaste halten, Mausrad = Tonhöhe) |
 | 7 | Webcam + Drucker (USB) | Foto mit Filter aufnehmen und ausdrucken |
-| 8 | Touchscreen (USB-C, lila) | Blasen antippen – Eingabe **und** Ausgabe |
+| 8 | Touchscreen (USB-C, lila) | Tippen (Blasen), Wischen (Fotos), Ziehen (Formen) – Eingabe **und** Ausgabe |
 | Finale | Maus, Tastatur, Lautsprecher, Bildschirm, Computer | alles einsortieren, Abschluss-Übersicht |
 
 Nach jeder Station zeigt eine EVA-Leiste, was Eingabe, Verarbeitung und Ausgabe waren. Danach wird das Gerät
 einsortiert. Falsch einsortierte Geräte hüpfen mit einer Erklärung aus dem Karton zurück.
+
+## Physik-Spaß
+
+- Die Kaffeetasse kann umkippen – dann läuft der Kaffee aus und bildet Pfützen (auf Geräten gibt es Funken).
+  Steht sie wieder eine Weile, wird nachgefüllt.
+- Der Kaktus zerbricht, wenn er vom Tisch fällt oder gegen die Wand fliegt. Kurz darauf steht ein neuer da.
+- Alles, was auf den Boden fällt, wird nach einer Sekunde zurück auf den Tisch gestellt.
+- Vor dem großen Fenster fliegen Vögel, ein Heißluftballon und ein Flugzeug mit EVA-Banner vorbei; die Wanduhr zeigt die echte Uhrzeit.
 
 ## Bedienung
 

@@ -98,6 +98,21 @@ export class Audio {
     success() {
         [392, 523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this.tone(f, 0.45, { type: 'triangle', vol: 0.12, delay: i * 0.1 }));
     }
+    // Physik-Spaß
+    shatter() {
+        this.noise(0.35, { vol: 0.35, freq: 3200, q: 0.7 });
+        this.noise(0.18, { vol: 0.3, freq: 600, q: 0.9, type: 'lowpass' });
+        for (let i = 0; i < 5; i++) this.tone(2200 + Math.random() * 2600, 0.06, { type: 'triangle', vol: 0.05, delay: 0.03 + i * 0.045 });
+    }
+    splash() { this.noise(0.12, { vol: 0.08, freq: 900, q: 0.6, type: 'lowpass' }); }
+    zap() {
+        this.noise(0.16, { vol: 0.12, freq: 4500, q: 6 });
+        this.tone(90, 0.16, { type: 'sawtooth', vol: 0.06, slideTo: 60 });
+    }
+    kaching() {
+        this.tone(1318, 0.12, { type: 'triangle', vol: 0.14, bus: 'pc' });
+        this.tone(1760, 0.25, { type: 'triangle', vol: 0.12, bus: 'pc', delay: 0.08 });
+    }
     scannerBeep() { this.tone(1900, 0.09, { type: 'square', vol: 0.06 }); }
     keyClick() { this.noise(0.025, { vol: 0.12, freq: 5000, q: 3 }); }
     mouseClick() { this.noise(0.02, { vol: 0.15, freq: 6000, q: 4 }); }

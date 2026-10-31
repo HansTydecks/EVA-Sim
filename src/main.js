@@ -2,13 +2,16 @@ import * as THREE from 'three';
 import { Physics } from './physics.js';
 import { Audio } from './audio.js';
 import { buildRoom } from './scene/room.js';
-import { makeBarcodeCard, makePaper, MIDI_NOTES } from './scene/models.js';
+import { makeProduct, makePaper, MIDI_NOTES } from './scene/models.js';
+import { PRODUCTS } from './game/products.js';
+import { FunFx } from './game/fun.js';
+import { Outside } from './scene/outside.js';
 import { Device, PhysItem, createItem } from './devices.js';
 import { Port, PORT_LAYOUT } from './interaction/cables.js';
 import { HandController } from './interaction/hand.js';
 import { CameraRig } from './interaction/cameraRig.js';
 import { Computer } from './computer/os.js';
-import { TouchApp, CameraApp, SCAN_CODES } from './computer/apps.js';
+import { TouchApp, CameraApp } from './computer/apps.js';
 import { Guide } from './ui/guide.js';
 import { Hud } from './ui/hud.js';
 import { Sorter } from './game/sorting.js';
@@ -29,7 +32,7 @@ container.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xf3e3ea);
 scene.fog = new THREE.Fog(0xf3e3ea, 4, 9);
-const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.03, 30);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.03, 90);
 
 const listeners = {};
 const game = {
@@ -38,7 +41,7 @@ const game = {
     items: [],
     itemsById: {},
     ports: [],
-    cards: [],
+    products: [],
     flags: {},
     stats: { wrong: 0 },
     time: 0,
@@ -81,33 +84,41 @@ touchTex.colorSpace = THREE.SRGBColorSpace;
 game.touchApp = new TouchApp(game, touchCanvas);
 
 // Gegenstände
-for (const [kind, pos, yaw] of [['mug', [-0.3, 0.75, 0.2], 0.4], ['plant', [0.43, 0.75, -0.36], 0]]) {
+for (const [kind, pos, yaw] of [['mug', [-0.3, 0.75, 0.2], 0.4], ['cactus', [0.43, 0.75, -0.36], 0]]) {
     const it = createItem(game, kind, new THREE.Vector3(...pos), yaw);
     game.items.push(it);
     game.itemsById[kind] = it;
 }
 
-game.spawnCards = () => {
-    Object.keys(SCAN_CODES).forEach((code, i) => {
-        const obj = makeBarcodeCard(code);
-        obj.position.set(-0.64 + i * 0.128, 0.76 + i * 0.01, 0.27);
-        obj.rotation.y = (Math.random() - 0.5) * 0.3;
-        const it = new PhysItem(game, obj, { name: `Strichcode ${code}`, emoji: '🏷️', mass: 0.02 });
-        it.code = code;
+// Einkäufe für die Kasse (Scanner-Station)
+const PRODUCT_SPOTS = [[-0.64, -0.12, 0.3], [-0.62, 0.1, -0.3], [-0.16, 0.02, 0.1], [-0.6, 0.26, 0.2]];
+game.spawnProducts = () => {
+    PRODUCTS.forEach((def, i) => {
+        const obj = makeProduct(def);
+        const [x, z, yaw] = PRODUCT_SPOTS[i];
+        obj.position.set(x, 0.76, z);
+        obj.rotation.y = yaw;
+        const it = new PhysItem(game, obj, { name: def.name, emoji: def.emoji, mass: def.model === 'bar' ? 0.1 : 0.3, kind: 'product' });
+        it.product = def;
+        it.id = def.id;
         it.home = obj.position.clone();
-        game.cards.push(it);
+        it.homeYaw = yaw;
+        it.setPosition(obj.position.clone().setY(0.95 + i * 0.05), yaw);
+        game.guide.burst(obj.position.clone().setY(0.85), [0xffffff, 0xd67c9c, 0xffd43b], 10, 0.5);
+        game.products.push(it);
         game.items.push(it);
     });
 };
-game.removeCards = () => {
-    for (const c of game.cards) {
+game.removeProducts = () => {
+    for (const c of game.products) {
+        if (game.hand.held === c) continue;
         c.sorted = true;
         game.physics.remove(c.body);
         game.guide.burst(c.object.position.clone(), [0xffffff, 0xd67c9c], 8, 0.5);
         scene.remove(c.object);
     }
-    game.items = game.items.filter(i => !game.cards.includes(i));
-    game.cards = [];
+    game.items = game.items.filter(i => !game.products.includes(i) || !i.sorted);
+    game.products = game.products.filter(i => !i.sorted);
 };
 game.spawnDuck = () => {
     if (game.itemsById.duck) return;
@@ -183,7 +194,8 @@ D.midi.clickHandler = (hit) => {
 
 const touchScreen = D.touch.object.userData.screen;
 D.touch.pressHandler = {
-    drag(hit) { if (hit && hit.object === touchScreen && hit.uv && D.touch.plugged) game.touchApp.touch(hit.uv.x, hit.uv.y); },
+    drag(hit) { if (hit && hit.object === touchScreen && hit.uv && D.touch.plugged) game.touchApp.move(hit.uv.x, hit.uv.y); },
+    up() { game.touchApp.up(); },
 };
 D.touch.clickHandler = (hit) => {
     if (D.touch.sortable || hit?.object !== touchScreen) return false;
@@ -272,6 +284,8 @@ scene.add(laser);
 const laserRay = new THREE.Raycaster();
 const scanCooldown = {};
 let scannerWarnT = 0;
+let aimProduct = null, aimT = 0;
+const UPV = new THREE.Vector3(0, 1, 0);
 function updateScanner(dt) {
     const sc = D.scanner;
     laser.visible = false;
@@ -285,24 +299,41 @@ function updateScanner(dt) {
         return;
     }
     const origin = sc.object.localToWorld(sc.object.userData.laserOrigin.clone());
-    laserRay.set(origin, DOWN);
-    laserRay.far = 0.6;
-    const hits = laserRay.intersectObjects([room.staticGroup, ...game.cards.map(c => c.object), ...Object.values(D).filter(d => d.visible && d !== sc).map(d => d.object)], true);
+    // Zeigt die Hand auf eine Ware, zielt der Laser genau dorthin – sonst senkrecht nach unten
+    const hh = game.hand.hoverHit;
+    const handProd = hh ? game.products.find(c => isChild(hh.object, c.object)) : null;
+    const dir = DOWN.clone();
+    let far = 0.6;
+    if (handProd) {
+        dir.copy(hh.point).sub(origin);
+        far = Math.min(0.8, dir.length() + 0.05);
+        dir.normalize();
+    }
+    laserRay.set(origin, dir);
+    laserRay.far = far;
+    const hits = laserRay.intersectObjects([room.staticGroup, ...game.products.map(c => c.object), ...game.items.filter(i => !i.product).map(i => i.object), ...Object.values(D).filter(d => d.visible && d !== sc).map(d => d.object)], true);
     const hit = hits.find(h => h.object.visible);
-    const len = hit ? hit.distance : 0.6;
+    const len = hit ? hit.distance : far;
     laser.visible = true;
     laser.scale.set(1, len, 1);
-    laser.position.copy(origin).addScaledVector(DOWN, len / 2);
+    laser.position.copy(origin).addScaledVector(dir, len / 2);
+    laser.quaternion.setFromUnitVectors(UPV, dir);
     laser.material.opacity = 0.6 + Math.random() * 0.3;
-    if (!hit) return;
-    const card = game.cards.find(c => isChild(hit.object, c.object));
-    if (!card) return;
+    const prod = hit ? game.products.find(c => isChild(hit.object, c.object)) : null;
+    // kurz draufhalten, dann piept es
+    if (prod !== aimProduct) { aimProduct = prod; aimT = 0; }
+    if (!prod) return;
+    aimT += dt;
+    laser.material.opacity = 1;
+    if (aimT < 0.2) return;
     const now = game.time;
-    if ((scanCooldown[card.code] || 0) > now) return;
-    scanCooldown[card.code] = now + 1.3;
+    const code = prod.product.ean;
+    if ((scanCooldown[code] || 0) > now) return;
+    scanCooldown[code] = now + 1.5;
     game.audio.scannerBeep();
     game.guide.burst(hit.point, [0xff3333, 0xffffff], 6, 0.3);
-    if (game.computer.app?.scan) game.computer.app.scan(card.code);
+    if (game.computer.app?.scan) game.computer.app.scan(code);
+    else game.hud.toast(`Piep! ${prod.product.emoji} ${prod.product.ean}`, '', 1.4);
     game.activity();
 }
 function isChild(o, root) { while (o) { if (o === root) return true; o = o.parent; } return false; }
@@ -399,6 +430,18 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+// ------------------------------------------------------------ Physik-Spaß & Außenwelt
+game.fun = new FunFx(game);
+game.outside = new Outside(game);
+let respawnSaid = false;
+game.on('respawned', it => {
+    game.hud.toast(`↩ ${it.emoji} zurück auf den Tisch`, '', 1.6);
+    if (!respawnSaid && it.kind === 'device') {
+        respawnSaid = true;
+        game.progression.interject('Hoppla, runtergefallen! 🙈', 'Kein Problem – ich habe es dir zurück auf den Tisch gestellt.', 'thinking', 3.5);
+    }
+});
+
 // ------------------------------------------------------------ Schleife
 let lastT = performance.now();
 function loop() {
@@ -420,6 +463,9 @@ function loop() {
     if (game.touchApp.on) touchTex.needsUpdate = true;
     game.guide.update(dt, t);
     updateScanner(dt);
+    game.fun.update(dt);
+    game.outside.update(dt, t);
+    room.update();
 
     // Mikrofon: Tonhöhe mit Pfeiltasten gleiten lassen
     const app = game.computer.app;
@@ -433,6 +479,21 @@ function loop() {
         if (p.t <= 0) { p.k.position.y = p.k.userData.baseY; p.k.material.emissive?.setHex(0); }
     }
     for (const arr of [kbPressed, midiPressed]) for (let i = arr.length - 1; i >= 0; i--) if (arr[i].t <= 0) arr.splice(i, 1);
+    // MIDI: die nächste gesuchte Taste leuchtet
+    if (D.midi.visible && !D.midi.sorted) {
+        const tn = (D.midi.plugged && !D.midi.sortable && app?.noteOn) ? app.targetNote : null;
+        D.midi.object.userData.keys.forEach((k, i) => {
+            if (tn === i) {
+                k.material.emissive.set(MIDI_NOTES[i].color);
+                k.material.emissiveIntensity = 0.45 + 0.35 * Math.sin(t * 8);
+                k.userData.glowing = true;
+            } else if (k.userData.glowing) {
+                k.userData.glowing = false;
+                k.material.emissive.setHex(0);
+                k.material.emissiveIntensity = 1;
+            }
+        });
+    }
 
     // Druckaufträge
     for (const job of printJobs) {
@@ -444,7 +505,7 @@ function loop() {
         const p = pr.localToWorld(local);
         job.paper.object.position.copy(p);
         job.paper.object.quaternion.copy(pr.quaternion);
-        job.paper.body.position.set(p.x, p.y, p.z);
+        game.physics.placeBody(job.paper.body, job.paper.object);
         if (job.t >= 1 && !job.done) {
             job.done = true;
             job.paper.locked = false;
@@ -499,6 +560,13 @@ Object.assign(window.__eva, {
         d.setPosition(b.group.position.clone().setY(b.group.position.y + 0.12));
     },
     flags: game.flags,
+    spillMug() { game.fun.spillMug(); },
+    breakCactus() { game.fun.breakCactus(); },
+    dropToFloor(id) {
+        const it = D[id] || game.itemsById[id];
+        if (it.plug?.port) it.plug.unplug(true);
+        it.setPosition(new THREE.Vector3(0.2, 0.3, 0.7));
+    },
 });
 
 loop();

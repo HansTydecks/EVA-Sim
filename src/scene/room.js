@@ -46,50 +46,145 @@ export function buildRoom(game) {
     });
     floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
     floorTex.repeat.set(4, 4);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.85 }));
+    // Boden nur innerhalb des Raums (hinter der Rückwand liegt die Außenwelt)
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 3.4), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.85 }));
+    floorTex.repeat.set(2, 1.4);
     floor.rotation.x = -Math.PI / 2;
+    floor.position.set(0.1, 0, 0.6);
     floor.receiveShadow = true;
     staticGroup.add(floor);
     physics.addStaticBox({ x: 5, y: 0.05, z: 5 }, { x: 0, y: -0.05, z: 0 });
 
     const wallMat = mat(0xf3e3ea, { roughness: 0.95 });
-    const back = new THREE.Mesh(new THREE.PlaneGeometry(10, 4), wallMat);
-    back.position.set(0, 2, -1.1);
-    back.receiveShadow = true;
-    staticGroup.add(back);
-    const left = new THREE.Mesh(new THREE.PlaneGeometry(10, 4), mat(0xead5df, { roughness: 0.95 }));
+    // Rückwand mit großer Fensteröffnung
+    const WIN = { x0: -0.45, x1: 2.05, y0: 0.8, y1: 2.05 };
+    for (const [x0, x1, y0, y1] of [[-2.2, WIN.x0, 0, 4], [WIN.x1, 2.4, 0, 4], [WIN.x0, WIN.x1, 0, WIN.y0], [WIN.x0, WIN.x1, WIN.y1, 4]]) {
+        const part = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, y1 - y0), wallMat);
+        part.position.set((x0 + x1) / 2, (y0 + y1) / 2, -1.1);
+        part.receiveShadow = true;
+        staticGroup.add(part);
+    }
+    const left = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 4), mat(0xead5df, { roughness: 0.95 }));
     left.rotation.y = Math.PI / 2;
-    left.position.set(-2.2, 2, 0);
+    left.position.set(-2.2, 2, 0.6);
     left.receiveShadow = true;
     staticGroup.add(left);
-    const right = new THREE.Mesh(new THREE.PlaneGeometry(10, 4), mat(0xead5df, { roughness: 0.95 }));
+    const right = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 4), mat(0xead5df, { roughness: 0.95 }));
     right.rotation.y = -Math.PI / 2;
-    right.position.set(2.4, 2, 0);
+    right.position.set(2.4, 2, 0.6);
     staticGroup.add(right);
     physics.addStaticBox({ x: 5, y: 2, z: 0.05 }, { x: 0, y: 2, z: -1.15 });
     physics.addStaticBox({ x: 0.05, y: 2, z: 5 }, { x: -2.25, y: 2, z: 0 });
     physics.addStaticBox({ x: 0.05, y: 2, z: 5 }, { x: 2.45, y: 2, z: 0 });
     physics.addStaticBox({ x: 5, y: 2, z: 0.05 }, { x: 0, y: 2, z: 2.2 });
 
-    // Fenster
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.8), new THREE.MeshBasicMaterial({
-        map: canvasTexture(256, 192, (ctx, w, h) => {
-            const gr = ctx.createLinearGradient(0, 0, 0, h);
-            gr.addColorStop(0, '#8fd0ff'); gr.addColorStop(1, '#d9f1ff');
-            ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h);
-            ctx.fillStyle = '#ffffff';
-            for (const [x, y, r] of [[60, 50, 22], [85, 45, 28], [110, 52, 20], [180, 90, 18], [200, 84, 24]]) {
-                ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-            }
-            ctx.fillStyle = '#6cc070'; ctx.fillRect(0, h - 40, w, 40);
-            ctx.fillStyle = '#ffffff'; ctx.fillRect(w / 2 - 4, 0, 8, h); ctx.fillRect(0, h / 2 - 4, w, 8);
-        }),
+    // Panoramafenster (die Außenwelt baut outside.js)
+    const frameMat = mat(0xffffff, { roughness: 0.5 });
+    const wcx = (WIN.x0 + WIN.x1) / 2, wcy = (WIN.y0 + WIN.y1) / 2, ww = WIN.x1 - WIN.x0, wh = WIN.y1 - WIN.y0;
+    const addFrame = (w, h, x, y, z = -1.1, d = 0.07) => {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
+        b.position.set(x, y, z);
+        b.castShadow = true;
+        staticGroup.add(b);
+    };
+    addFrame(ww + 0.1, 0.06, wcx, WIN.y1 + 0.02);
+    addFrame(0.06, wh + 0.06, WIN.x0 - 0.02, wcy);
+    addFrame(0.06, wh + 0.06, WIN.x1 + 0.02, wcy);
+    for (const x of [WIN.x0 + ww / 3, WIN.x0 + (2 * ww) / 3]) addFrame(0.05, wh, x, wcy, -1.1, 0.06);
+    addFrame(ww, 0.035, wcx, WIN.y0 + wh * 0.72, -1.1, 0.05);
+    // Glas: ganz leichter Schimmer
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), new THREE.MeshStandardMaterial({
+        color: 0xdff3ff, transparent: true, opacity: 0.07, roughness: 0.05, metalness: 0.2, depthWrite: false,
     }));
-    win.position.set(0.95, 1.75, -1.095);
-    staticGroup.add(win);
-    const frame = rbox(1.18, 0.88, 0.04, 0xffffff, { r: 0.01 });
-    frame.position.set(0.95, 1.75, -1.12);
-    staticGroup.add(frame);
+    glass.position.set(wcx, wcy, -1.1);
+    glass.userData.noRaycast = true;
+    staticGroup.add(glass);
+    // Fensterbank
+    const sill = rbox(ww + 0.2, 0.03, 0.16, 0xf7f2ee, { r: 0.006 });
+    sill.position.set(wcx, WIN.y0 - 0.015, -1.04);
+    staticGroup.add(sill);
+    physics.addStaticBox({ x: (ww + 0.2) / 2, y: 0.015, z: 0.08 }, { x: wcx, y: WIN.y0 - 0.015, z: -1.04 });
+    // Deko auf der Fensterbank: Bücher, Globus, Stiftebecher
+    const bookCols = [0x3b7ddd, 0xf08a24, 0x2fae5f, 0xd67c9c, 0xffd43b];
+    bookCols.forEach((c, i) => {
+        const bk = box(0.035, 0.17 + (i % 3) * 0.025, 0.12, c);
+        bk.position.set(-0.32 + i * 0.038, WIN.y0 + bk.geometry.parameters.height / 2, -1.04);
+        if (i === 4) { bk.rotation.z = -0.35; bk.position.x += 0.03; }
+        staticGroup.add(bk);
+    });
+    const globe = new THREE.Mesh(new THREE.SphereGeometry(0.06, 20, 14), new THREE.MeshStandardMaterial({
+        map: canvasTexture(256, 128, (ctx, w, h) => {
+            ctx.fillStyle = '#4dabf7'; ctx.fillRect(0, 0, w, h);
+            ctx.fillStyle = '#69db7c';
+            for (const [x, y, rx, ry] of [[50, 50, 28, 22], [70, 85, 14, 24], [130, 45, 30, 18], [145, 80, 18, 20], [205, 55, 26, 16], [215, 95, 14, 10]]) {
+                ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0.3, 0, Math.PI * 2); ctx.fill();
+            }
+        }), roughness: 0.4,
+    }));
+    globe.position.set(1.55, WIN.y0 + 0.11, -1.04);
+    globe.rotation.z = 0.4;
+    staticGroup.add(globe);
+    const gstand = cyl(0.03, 0.035, 0.04, 0x8a6d4f, 14);
+    gstand.position.set(1.55, WIN.y0 + 0.02, -1.04);
+    staticGroup.add(gstand);
+    const cup = cyl(0.03, 0.026, 0.09, 0x4a1f3a, 16);
+    cup.position.set(0.95, WIN.y0 + 0.045, -1.05);
+    staticGroup.add(cup);
+    [0xff6b6b, 0x4dabf7, 0xffd43b, 0x69db7c].forEach((c, i) => {
+        const pen = cyl(0.004, 0.004, 0.13, c, 6);
+        pen.position.set(0.95 + (i - 1.5) * 0.012, WIN.y0 + 0.1, -1.05 + (i % 2) * 0.01);
+        pen.rotation.z = (i - 1.5) * 0.12;
+        staticGroup.add(pen);
+    });
+    // Heizkörper unter dem Fenster
+    const rad = new THREE.Group();
+    for (let i = 0; i < 18; i++) {
+        const fin = rbox(0.045, 0.4, 0.05, 0xf4f4f6, { r: 0.012 });
+        fin.position.set(i * 0.06, 0, 0);
+        rad.add(fin);
+    }
+    rad.position.set(wcx - 0.5, 0.42, -1.06);
+    staticGroup.add(rad);
+
+    // Wanduhr (zeigt die echte Uhrzeit)
+    const clock = new THREE.Group();
+    const face = new THREE.Mesh(new THREE.CircleGeometry(0.11, 40), new THREE.MeshStandardMaterial({
+        map: canvasTexture(256, 256, (ctx, w, h) => {
+            ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(w / 2, h / 2, w / 2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#4a1f3a';
+            for (let i = 0; i < 12; i++) {
+                const a = (i / 12) * Math.PI * 2;
+                ctx.save(); ctx.translate(w / 2 + Math.sin(a) * 104, h / 2 - Math.cos(a) * 104); ctx.rotate(a);
+                ctx.fillRect(-3, -10, 6, i % 3 ? 14 : 22); ctx.restore();
+            }
+        }), roughness: 0.6,
+    }));
+    clock.add(face);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.112, 0.01, 8, 40), mat(0xd67c9c));
+    clock.add(ring);
+    const mkHand = (len, wid, col, z) => {
+        const hnd = new THREE.Group();
+        const b = new THREE.Mesh(new THREE.BoxGeometry(wid, len, 0.004), new THREE.MeshBasicMaterial({ color: col }));
+        b.position.y = len / 2 - 0.012;
+        hnd.add(b);
+        hnd.position.z = z;
+        clock.add(hnd);
+        return hnd;
+    };
+    const hourHand = mkHand(0.06, 0.008, 0x2a1a2e, 0.004);
+    const minHand = mkHand(0.09, 0.005, 0x2a1a2e, 0.008);
+    const secHand = mkHand(0.095, 0.002, 0xe03131, 0.012);
+    clock.position.set(-0.8, 1.2, -1.095);
+    staticGroup.add(clock);
+    const updateClock = () => {
+        const d = new Date();
+        const sec = d.getSeconds() + d.getMilliseconds() / 1000;
+        const min = d.getMinutes() + sec / 60;
+        const hr = (d.getHours() % 12) + min / 60;
+        secHand.rotation.z = -sec / 60 * Math.PI * 2;
+        minHand.rotation.z = -min / 60 * Math.PI * 2;
+        hourHand.rotation.z = -hr / 12 * Math.PI * 2;
+    };
 
     // Poster
     const poster = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.42), new THREE.MeshStandardMaterial({
@@ -107,7 +202,7 @@ export function buildRoom(game) {
             });
         }),
     }));
-    poster.position.set(-0.55, 1.6, -1.095);
+    poster.position.set(-1.5, 1.12, -1.095);
     staticGroup.add(poster);
 
     // Schild über den Kartons
@@ -159,7 +254,7 @@ export function buildRoom(game) {
     const camPos = game.cameraBase;
     const boxes = BOX_DEFS.map(def => buildCardboardBox(game, staticGroup, def, camPos));
 
-    return { staticGroup, boxes, sun };
+    return { staticGroup, boxes, sun, update: updateClock };
 }
 
 function buildCardboardBox(game, parent, def, camPos) {
