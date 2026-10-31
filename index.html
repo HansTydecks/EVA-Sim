@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EVA-Werkstatt – Eingabe, Verarbeitung, Ausgabe in 3D</title>
+    <meta name="description" content="3D-Simulation zum EVA-Prinzip: Geräte einstecken, am Computer ausprobieren und in Kartons sortieren.">
+    <link rel="stylesheet" href="styles.css">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./vendor/three/three.module.js",
+            "three/addons/": "./vendor/three/addons/",
+            "cannon-es": "./vendor/cannon-es.js"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="app"></div>
+
+    <!-- Kopfzeile: Titel + Fortschritt + Hilfe -->
+    <div id="hud" class="hidden">
+        <div class="hud-top">
+            <div class="hud-title">EVA-Werkstatt</div>
+            <div id="progress" class="progress"></div>
+            <button id="helpBtn" class="round-btn" title="Hilfe: Was muss ich tun?">?</button>
+        </div>
+
+        <!-- Blick nach links/rechts -->
+        <button id="lookLeftBtn" class="look-btn look-left" title="Zu den Kartons schauen">◀<span>Kartons</span></button>
+        <button id="lookRightBtn" class="look-btn look-right hidden" title="Zurück zum Tisch">▶<span>Tisch</span></button>
+
+        <!-- EVA-Karte nach jeder Station -->
+        <div id="evaCard" class="eva-card hidden">
+            <div class="eva-step eva-e"><div class="eva-label">Eingabe</div><div class="eva-dev" id="evaE"></div></div>
+            <div class="eva-arrow">➜</div>
+            <div class="eva-step eva-v"><div class="eva-label">Verarbeitung</div><div class="eva-dev" id="evaV"></div></div>
+            <div class="eva-arrow">➜</div>
+            <div class="eva-step eva-a"><div class="eva-label">Ausgabe</div><div class="eva-dev" id="evaA"></div></div>
+        </div>
+
+        <!-- Byte mit Sprechblase -->
+        <div id="bytePanel" class="byte-panel">
+            <div class="byte-circle"><img id="byteImg" src="assets/byte/normal.png" alt="Byte"></div>
+            <div class="byte-bubble">
+                <h3 id="byteTitle">Hallo!</h3>
+                <p id="byteText"></p>
+                <button id="byteNext" class="next-btn hidden">Weiter ▶</button>
+            </div>
+        </div>
+
+        <!-- Steuerungshinweis -->
+        <div id="controls" class="controls-hint"></div>
+    </div>
+
+    <!-- Tooltip an der Hand -->
+    <div id="tooltip" class="tooltip hidden"></div>
+
+    <!-- Kurze Rückmeldung (Toast) -->
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- Startbildschirm -->
+    <div id="startScreen" class="overlay">
+        <div class="start-card">
+            <div class="byte-circle big"><img src="assets/byte/happy.png" alt="Byte"></div>
+            <h1>EVA-Werkstatt</h1>
+            <p class="subtitle"><span class="c-e">Eingabe</span> · <span class="c-v">Verarbeitung</span> · <span class="c-a">Ausgabe</span></p>
+            <p>Du sitzt an einem Schreibtisch mit einem Computer. Nach und nach tauchen neue Geräte auf.
+               <b>Steck sie ein</b>, <b>probier sie aus</b> und <b>sortiere</b> sie danach in die richtigen Kartons!</p>
+            <div class="howto">
+                <div><span class="key">🖱️ Linke Taste halten</span> greifen</div>
+                <div><span class="key">🖱️ Loslassen</span> ablegen oder werfen</div>
+                <div><span class="key">↔ Bildschirmrand</span> umschauen</div>
+                <div><span class="key">?</span> Hilfe, wenn du nicht weiterweißt</div>
+            </div>
+            <button id="startBtn" class="start-btn">Los geht's!</button>
+            <p class="small" id="loadingNote">Wird geladen …</p>
+        </div>
+    </div>
+
+    <!-- Endbildschirm -->
+    <div id="endScreen" class="overlay hidden">
+        <div class="end-card">
+            <div class="byte-circle big"><img src="assets/byte/happy.png" alt="Byte"></div>
+            <h1>Geschafft! 🎉</h1>
+            <p>Du hast alle Geräte eingesteckt, ausprobiert und richtig sortiert.</p>
+            <div class="end-boxes">
+                <div class="end-box eva-e"><h3>Eingabe</h3><ul id="endE"></ul></div>
+                <div class="end-box eva-v"><h3>Verarbeitung</h3><ul id="endV"></ul></div>
+                <div class="end-box eva-a"><h3>Ausgabe</h3><ul id="endA"></ul></div>
+            </div>
+            <p class="small">Eingabegeräte geben dem Computer Informationen. Der Computer verarbeitet sie.
+               Ausgabegeräte zeigen oder spielen das Ergebnis. Der Touchscreen kann sogar beides!</p>
+            <button id="againBtn" class="start-btn">Nochmal spielen</button>
+        </div>
+    </div>
+
+    <footer class="impressum">
+        Entwickelt für Lernende und Lehrende |
+        <a href="https://tinfo.space/teachers/Digitale_Tools/" target="_blank" rel="noopener">More apps and tools</a>
+        <a href="http://contact.tinfo.space/" target="_blank" rel="noopener">Kontakt</a>
+        <a href="https://github.com/HansTydecks" target="_blank" rel="noopener">GitHub</a>
+        © 2025 Hans Tydecks
+    </footer>
+
+    <noscript>Diese Simulation braucht JavaScript.</noscript>
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>
