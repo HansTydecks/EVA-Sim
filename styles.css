@@ -207,9 +207,8 @@ html, body {
 /* EVA-Karte */
 .eva-card {
     position: fixed;
-    top: 66px;
-    left: 50%;
-    transform: translateX(-50%);
+    top: 64px;
+    right: 12px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -222,10 +221,10 @@ html, body {
     pointer-events: none;
 }
 @keyframes popIn {
-    from { transform: translateX(-50%) scale(0.6); opacity: 0; }
-    to { transform: translateX(-50%) scale(1); opacity: 1; }
+    from { transform: scale(0.6); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
 }
-.eva-step { border-radius: 10px; padding: 5px 12px; text-align: center; min-width: 110px; }
+.eva-step { border-radius: 10px; padding: 5px 10px; text-align: center; min-width: 96px; }
 .eva-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; }
 .eva-dev { font-size: 15px; font-weight: 700; }
 .eva-e { background: var(--e); }

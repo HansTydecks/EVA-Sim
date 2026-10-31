@@ -42,8 +42,11 @@ export class HandController {
         game.scene.add(this.marker);
 
         const d = this.dom;
-        d.addEventListener('pointermove', e => this.onMove(e));
-        d.addEventListener('pointerdown', e => this.onDown(e));
+        d.addEventListener('pointermove', e => { if (!this.mouseMode) this.onMove(e); });
+        d.addEventListener('pointerdown', e => { if (!this.mouseMode) this.onDown(e); });
+        // Im Maus-Modus fensterweit hören, damit HUD-Elemente keine Klicks/Bewegungen schlucken
+        window.addEventListener('pointermove', e => { if (this.mouseMode) this.onMove(e); });
+        window.addEventListener('pointerdown', e => { if (this.mouseMode) { e.preventDefault(); this.onDown(e); } }, true);
         window.addEventListener('pointerup', e => this.onUp(e));
         // Zeigerposition fensterweit verfolgen: über HUD-Knöpfen wird nicht geschwenkt
         window.addEventListener('pointermove', e => {
@@ -225,6 +228,19 @@ export class HandController {
                     _m3.getNormalMatrix(hit.object.matrixWorld);
                     this.normalTarget.copy(hit.face.normal).applyMatrix3(_m3).normalize();
                 } else this.normalTarget.set(0, 1, 0);
+                // Einwurf-Hilfe: zeigt die Hand mit einem Gegenstand irgendwo auf einen Karton,
+                // wird der Gegenstand mittig über die Öffnung gehalten.
+                const box = this.held ? findBox(hit.object) : null;
+                if (box) {
+                    this.pointTarget.copy(box.group.position);
+                    this.pointTarget.y += 0.36;
+                    this.normalTarget.set(0, 1, 0);
+                    if (box.glowT <= 0) { box.glow.material.color.setHex(box.hex); box.glow.material.opacity = 0.5; }
+                    this.boxHover = box;
+                } else if (this.boxHover) {
+                    if (this.boxHover.glowT <= 0) this.boxHover.glow.material.opacity = 0;
+                    this.boxHover = null;
+                }
                 if (!this.held) {
                     const it = findInteractable(hit.object);
                     if (it !== this.hovered) {
@@ -285,6 +301,11 @@ export function findInteractable(o) {
         if (o.userData && o.userData.interactable) return o.userData.interactable;
         o = o.parent;
     }
+    return null;
+}
+
+function findBox(o) {
+    while (o) { if (o.userData && o.userData.box) return o.userData.box; o = o.parent; }
     return null;
 }
 

@@ -246,5 +246,6 @@ function buildCardboardBox(game, parent, def, camPos) {
         },
     };
     boxObj.drawLabel();
+    g.userData.box = boxObj;
     return boxObj;
 }

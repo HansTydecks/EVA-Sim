@@ -14,7 +14,7 @@ export class Sorter {
 
     inside(box, pos) {
         const l = box.group.worldToLocal(pos.clone());
-        return Math.abs(l.x) < BOX_SIZE.w / 2 + 0.01 && Math.abs(l.z) < BOX_SIZE.d / 2 + 0.01 && l.y < BOX_SIZE.h + 0.06 && l.y > -0.06;
+        return Math.abs(l.x) < BOX_SIZE.w / 2 + 0.01 && Math.abs(l.z) < BOX_SIZE.d / 2 + 0.01 && l.y < BOX_SIZE.h + 0.45 && l.y > -0.06;
     }
 
     update(dt, time) {

@@ -261,6 +261,7 @@ export class Device extends PhysItem {
         }
         this.game.effects?.burst(pos.clone().setY(pos.y + 0.1));
         this.game.audio.plop();
+        this.game.rig?.lookDesk();
     }
 
     hide() {

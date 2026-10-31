@@ -45,8 +45,8 @@ export class Progression {
         if (!s) return;
         this.nextPressed = false;
         s.enter?.();
-        this.interjectT = 0;
-        this.showHint();
+        // Eine laufende Rückmeldung (z. B. "Richtig!") noch zu Ende zeigen
+        if (this.interjectT <= 0) this.showHint();
         this.idle = 0;
         this.helpT = 0;
         g.guide.setTarget(s.guide ? s.guide() : null);
@@ -77,7 +77,6 @@ export class Progression {
         this.showHint();
         this.helpT = 9;
         this.game.guide.ghostT = 0;
-        this.game.audio.pcBlip?.(0);
     }
 
     activity() { this.idle = 0; }

@@ -218,6 +218,7 @@ game.on('plugged', ({ device }) => {
 });
 game.on('unplugged', ({ device }) => {
     if (device?.id === 'speakers') game.audio.setSpeakers(false);
+    if (device?.id === 'monitor') game.computer.powerOff();
 });
 game.on('appDone', name => { game.flags[name] = true; game.audio.success(); });
 game.on('wrongPort', ({ plug, port }) => {
@@ -253,7 +254,11 @@ game.on('print', photo => {
     const paper = new PhysItem(game, obj, { name: 'Ausdruck', emoji: '🖼️', mass: 0.05 });
     paper.id = 'paper';
     game.physics.makeKinematic(paper.body);
+    paper.body.collisionResponse = false; // beim Herausfahren den Drucker nicht wegschieben
     paper.locked = true;
+    const p0 = D.printer.object.localToWorld(D.printer.object.userData.slotPos.clone());
+    paper.setPosition(p0);
+    game.physics.makeKinematic(paper.body);
     game.items.push(paper);
     printJobs.push({ paper, t: 0 });
     game.audio.printer();
@@ -270,7 +275,7 @@ let scannerWarnT = 0;
 function updateScanner(dt) {
     const sc = D.scanner;
     laser.visible = false;
-    if (!sc.visible || sc.sorted || !sc.held) return;
+    if (!sc.visible || sc.sorted || !sc.held || sc.sortable) return;
     if (!sc.plugged) {
         scannerWarnT -= dt;
         if (scannerWarnT <= 0) {
@@ -435,7 +440,7 @@ function loop() {
         const pr = D.printer.object;
         const slot = pr.userData.slotPos;
         const e = Math.min(1, job.t);
-        const local = new THREE.Vector3(slot.x, slot.y - 0.003, slot.z - 0.14 + e * 0.22);
+        const local = new THREE.Vector3(slot.x, slot.y - 0.003, slot.z - 0.07 + e * 0.17);
         const p = pr.localToWorld(local);
         job.paper.object.position.copy(p);
         job.paper.object.quaternion.copy(pr.quaternion);
@@ -443,6 +448,7 @@ function loop() {
         if (job.t >= 1 && !job.done) {
             job.done = true;
             job.paper.locked = false;
+            job.paper.body.collisionResponse = true;
             game.physics.makeDynamic(job.paper.body);
             job.paper.home = p.clone();
             game.flags.printed = true;
