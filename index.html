@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EVA-Werkstatt – Eingabe, Verarbeitung, Ausgabe in 3D</title>
-    <meta name="description" content="3D-Simulation zum EVA-Prinzip: Geräte einstecken, am Computer ausprobieren und in Kartons sortieren.">
+    <title>EVA-Werkstatt – Eingabe, Verarbeitung, Ausgabe, Speicher in 3D</title>
+    <meta name="description" content="3D-Simulation zum EVA(S)-Prinzip: Geräte einstecken, am Computer ausprobieren, speichern und in Kartons sortieren.">
     <link rel="stylesheet" href="styles.css">
     <script type="importmap">
     {
@@ -38,6 +38,8 @@
             <div class="eva-step eva-v"><div class="eva-label">Verarbeitung</div><div class="eva-dev" id="evaV"></div></div>
             <div class="eva-arrow">➜</div>
             <div class="eva-step eva-a"><div class="eva-label">Ausgabe</div><div class="eva-dev" id="evaA"></div></div>
+            <div class="eva-arrow eva-s-part" id="evaSArrow">＋</div>
+            <div class="eva-step eva-s eva-s-part" id="evaSBox"><div class="eva-label">Speicher</div><div class="eva-dev" id="evaS"></div></div>
         </div>
 
         <!-- Byte mit Sprechblase -->
@@ -65,9 +67,10 @@
         <div class="start-card">
             <div class="byte-circle big"><img src="assets/byte/happy.png" alt="Byte"></div>
             <h1>EVA-Werkstatt</h1>
-            <p class="subtitle"><span class="c-e">Eingabe</span> · <span class="c-v">Verarbeitung</span> · <span class="c-a">Ausgabe</span></p>
+            <p class="subtitle"><span class="c-e">Eingabe</span> · <span class="c-v">Verarbeitung</span> · <span class="c-a">Ausgabe</span> · <span class="c-s">Speicher</span></p>
             <p>Du sitzt an einem Schreibtisch mit einem Computer. Nach und nach tauchen neue Geräte auf.
-               <b>Steck sie ein</b>, <b>probier sie aus</b> und <b>sortiere</b> sie danach in die richtigen Kartons!</p>
+               <b>Steck sie ein</b>, <b>probier sie aus</b> und <b>sortiere</b> sie danach in die richtigen Kartons!
+               Und was du erschaffst, kannst du <b>speichern</b>.</p>
             <div class="howto">
                 <div><span class="key">🖱️ Linke Taste halten</span> greifen</div>
                 <div><span class="key">🖱️ Loslassen</span> ablegen oder werfen</div>
@@ -89,9 +92,11 @@
                 <div class="end-box eva-e"><h3>Eingabe</h3><ul id="endE"></ul></div>
                 <div class="end-box eva-v"><h3>Verarbeitung</h3><ul id="endV"></ul></div>
                 <div class="end-box eva-a"><h3>Ausgabe</h3><ul id="endA"></ul></div>
+                <div class="end-box eva-s"><h3>Speicher</h3><ul id="endS"></ul></div>
             </div>
             <p class="small">Eingabegeräte geben dem Computer Informationen. Der Computer verarbeitet sie.
-               Ausgabegeräte zeigen oder spielen das Ergebnis. Der Touchscreen kann sogar beides!</p>
+               Ausgabegeräte zeigen oder spielen das Ergebnis. Speicher merken sich Daten – auch ohne Strom.
+               Der Touchscreen kann sogar Eingabe und Ausgabe!</p>
             <button id="againBtn" class="start-btn">Nochmal spielen</button>
         </div>
     </div>

@@ -6,11 +6,11 @@ const MOODS = { normal: 'normal', happy: 'happy', thinking: 'thinking', sad: 'sa
 export const STATIONS = [
     { id: 'monitor', label: '🖥️ Bildschirm' },
     { id: 'mouse', label: '🖱️ Maus' },
-    { id: 'keyboard', label: '⌨️ Tastatur' },
+    { id: 'keyboard', label: '⌨️ Text 💽' },
     { id: 'scanner', label: '🔊 Scanner' },
-    { id: 'midi', label: '🎹 MIDI' },
+    { id: 'midi', label: '🎹 MIDI 💾' },
     { id: 'mic', label: '🎤 Mikrofon' },
-    { id: 'camera', label: '📷 Foto' },
+    { id: 'camera', label: '📷 Foto 💿' },
     { id: 'touch', label: '📱 Touch' },
     { id: 'final', label: '📦 Aufräumen' },
 ];
@@ -22,7 +22,7 @@ export class Hud {
             hud: $('hud'), progress: $('progress'), help: $('helpBtn'),
             img: $('byteImg'), title: $('byteTitle'), text: $('byteText'), next: $('byteNext'), panel: $('bytePanel'),
             tooltip: $('tooltip'), toast: $('toast'), controls: $('controls'),
-            evaCard: $('evaCard'), evaE: $('evaE'), evaV: $('evaV'), evaA: $('evaA'),
+            evaCard: $('evaCard'), evaE: $('evaE'), evaV: $('evaV'), evaA: $('evaA'), evaS: $('evaS'),
             lookL: $('lookLeftBtn'), lookR: $('lookRightBtn'),
         };
         this.chips = {};
@@ -91,11 +91,13 @@ export class Hud {
 
     controls(html) { this.el.controls.innerHTML = html; }
 
-    eva(e, v, a) {
+    eva(e, v, a, s = null) {
         if (!e) { this.el.evaCard.classList.add('hidden'); return; }
         this.el.evaE.textContent = e;
         this.el.evaV.textContent = v;
         this.el.evaA.textContent = a;
+        this.el.evaS.textContent = s || '';
+        this.el.evaCard.classList.toggle('no-s', !s);
         this.el.evaCard.classList.remove('hidden');
         // Animation neu starten
         this.el.evaCard.style.animation = 'none';
@@ -112,7 +114,7 @@ export class Hud {
     }
 
     end(boxes) {
-        const map = { E: $('endE'), V: $('endV'), A: $('endA') };
+        const map = { E: $('endE'), V: $('endV'), A: $('endA'), S: $('endS') };
         for (const b of boxes) {
             map[b.cat].innerHTML = b.contents.map(d => `<li>${d.def.emoji} ${d.def.name}</li>`).join('');
         }

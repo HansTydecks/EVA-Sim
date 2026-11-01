@@ -68,19 +68,55 @@ export function makeTower() {
         at(s, 0, 0.04 + i * 0.012, D / 2 + 0.01);
         g.add(s);
     }
-    // Power-Knopf + LED
-    const btn = cyl(0.016, 0.016, 0.01, 0xdddddd);
-    btn.rotation.x = Math.PI / 2;
-    at(btn, -0.05, H - 0.055, D / 2 + 0.01);
+    // Power-Knopf + LED oben auf dem Gehäuse
+    const btn = cyl(0.014, 0.014, 0.008, 0xdddddd);
+    at(btn, -0.04, H + 0.002, D / 2 - 0.05);
     g.add(btn);
     const led = new THREE.Mesh(new THREE.SphereGeometry(0.006, 12, 8), mat(0x222222, { emissive: 0x000000 }));
-    at(led, 0.05, H - 0.055, D / 2 + 0.01);
+    at(led, 0.04, H + 0.001, D / 2 - 0.05);
     g.add(led);
-    // Aufschrift
-    const lbl = labelPlane(0.16, 0.03, 'COMPUTER', { fg: '#cfd6e4', font: 'bold 34px Segoe UI, sans-serif' });
-    at(lbl, 0, H - 0.022, D / 2 + 0.0095);
-    g.add(lbl);
-    g.userData = { size: new THREE.Vector3(W, H, D), led, frontZ: D / 2 + 0.009 };
+    // CD-Laufwerk mit ausfahrbarer Schublade
+    const bay = box(0.168, 0.034, 0.004, 0x1c1f26);
+    at(bay, 0, 0.395, D / 2 + 0.008);
+    g.add(bay);
+    const tray = new THREE.Group();
+    tray.position.set(0, 0.395, 0);
+    tray.userData.closedZ = 0;
+    tray.userData.openZ = 0.15;
+    const trayMat = mat(0x2b2f38, { roughness: 0.5 });
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.006, 0.15), trayMat);
+    plate.position.set(0, -0.009, D / 2 - 0.075);
+    plate.castShadow = true; plate.receiveShadow = true;
+    tray.add(plate);
+    const well = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.0015, 40), mat(0x1a1d23));
+    well.position.set(0, -0.0058, D / 2 - 0.08);
+    tray.add(well);
+    const bezel = rbox(0.164, 0.03, 0.008, 0x4b5262, { r: 0.003 });
+    bezel.position.set(0, 0, D / 2 + 0.006);
+    tray.add(bezel);
+    const slotLine = box(0.12, 0.002, 0.001, 0x23262e);
+    slotLine.position.set(-0.012, 0.004, D / 2 + 0.0105);
+    tray.add(slotLine);
+    const eject = rbox(0.02, 0.008, 0.004, 0xcfd6e4, { r: 0.0015 });
+    eject.position.set(0.062, -0.006, D / 2 + 0.011);
+    eject.userData.eject = true;
+    tray.add(eject);
+    const ejectSym = labelPlane(0.012, 0.007, '⏏', { fg: '#3a3f4b', font: 'bold 120px Segoe UI Symbol, sans-serif' });
+    ejectSym.position.set(0.062, -0.006, D / 2 + 0.0132);
+    ejectSym.userData.eject = true;
+    tray.add(ejectSym);
+    const driveLed = new THREE.Mesh(new THREE.SphereGeometry(0.0028, 8, 6), mat(0x222222, { emissive: 0x000000 }));
+    driveLed.position.set(-0.068, -0.006, D / 2 + 0.011);
+    tray.add(driveLed);
+    const cdLbl = labelPlane(0.05, 0.008, 'CD / DVD', { fg: '#aab2c2', font: 'bold 30px Segoe UI, sans-serif' });
+    cdLbl.position.set(0.012, -0.0075, D / 2 + 0.0105);
+    tray.add(cdLbl);
+    for (const m of [plate, bezel, eject, slotLine, well]) m.userData.drive = true;
+    tray.traverse(o => { o.userData.drive = true; });
+    g.add(tray);
+    // Mittelpunkt der CD-Mulde (lokal in der Schublade)
+    const cdSpot = new THREE.Vector3(0, -0.0052, D / 2 - 0.08);
+    g.userData = { size: new THREE.Vector3(W, H, D), led, frontZ: D / 2 + 0.009, tray, cdSpot, driveLed };
     return g;
 }
 
@@ -703,6 +739,188 @@ export function makePaper(texture) {
     img.position.set(0, 0.0022, -0.008);
     g.add(img);
     g.userData = { size: new THREE.Vector3(0.2, 0.003, 0.14) };
+    return g;
+}
+
+// ---------------- Speicher: Festplatte, USB-Stick, CD ----------------
+export function makeHdd() {
+    const g = new THREE.Group();
+    const W = 0.085, H = 0.024, D = 0.125;
+    g.add(at(rbox(W, H, D, 0x23262e, { r: 0.007 }), 0, H / 2, 0));
+    // Gummi-Ecken (Stoßschutz)
+    const rub = mat(0x14a3a3, { roughness: 0.8 });
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        const c = new THREE.Mesh(new RoundedBoxGeometry(0.022, H + 0.004, 0.022, 2, 0.006), rub);
+        c.position.set(sx * (W / 2 - 0.008), H / 2, sz * (D / 2 - 0.008));
+        c.castShadow = true;
+        g.add(c);
+    }
+    const lbl = labelPlane(0.06, 0.06, '', {});
+    lbl.material.map = canvasTexture(256, 256, (ctx, w, h) => {
+        ctx.fillStyle = '#3a3f4b'; ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = '#5a6070'; ctx.lineWidth = 10;
+        ctx.beginPath(); ctx.arc(w / 2, h * 0.42, 70, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(w / 2, h * 0.42, 14, 0, Math.PI * 2); ctx.fillStyle = '#5a6070'; ctx.fill();
+        ctx.fillStyle = '#cfd6e4'; ctx.font = 'bold 40px Segoe UI, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('1 TB', w / 2, h * 0.88);
+    });
+    lbl.material.transparent = false;
+    lbl.rotation.x = -Math.PI / 2;
+    at(lbl, 0, H + 0.0005, -0.01);
+    g.add(lbl);
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.003, 8, 6), mat(0x222222, { emissive: 0x000000 }));
+    at(led, 0.025, H * 0.55, D / 2 + 0.0005);
+    g.add(led);
+    const name = labelPlane(0.05, 0.009, 'FESTPLATTE', { fg: '#cfd6e4', font: 'bold 34px Segoe UI, sans-serif' });
+    at(name, -0.008, H * 0.5, D / 2 + 0.001);
+    g.add(name);
+    g.userData = { size: new THREE.Vector3(W + 0.004, H + 0.004, D + 0.004), anchor: new THREE.Vector3(0, H / 2, -D / 2), led };
+    return g;
+}
+
+export function makeUsbStick() {
+    const g = new THREE.Group();
+    // Stecker zeigt nach -z (wie bei den Kabel-Steckern)
+    const body = rbox(0.024, 0.01, 0.05, 0xf08a24, { r: 0.004 });
+    at(body, 0, 0.005, 0.004);
+    g.add(body);
+    const cap = rbox(0.0245, 0.0105, 0.012, 0x2b2e36, { r: 0.003 });
+    at(cap, 0, 0.005, 0.026);
+    g.add(cap);
+    const conn = box(0.014, 0.005, 0.014, 0xd8dbe2, { metalness: 0.9, roughness: 0.25 });
+    at(conn, 0, 0.005, -0.028);
+    g.add(conn);
+    for (const x of [-0.003, 0.003]) {
+        const hole = box(0.0025, 0.0006, 0.004, 0x222222);
+        at(hole, x, 0.0078, -0.03);
+        g.add(hole);
+    }
+    const loop = new THREE.Mesh(new THREE.TorusGeometry(0.009, 0.0018, 8, 20), mat(0x2b2e36));
+    loop.rotation.x = Math.PI / 2;
+    at(loop, 0, 0.005, 0.039);
+    g.add(loop);
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.0022, 8, 6), mat(0x553311, { emissive: 0x000000 }));
+    at(led, 0.006, 0.0102, 0.014);
+    g.add(led);
+    const lbl = labelPlane(0.016, 0.03, '', {});
+    lbl.material.map = canvasTexture(64, 128, (ctx, w, h) => {
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 30px Segoe UI, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.save(); ctx.translate(w / 2, h / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('EVA 8GB', 0, 0); ctx.restore();
+    });
+    lbl.rotation.x = -Math.PI / 2;
+    at(lbl, -0.002, 0.0101, -0.002);
+    g.add(lbl);
+    g.userData = { size: new THREE.Vector3(0.025, 0.011, 0.076), led, tipZ: -0.035 };
+    return g;
+}
+
+// Etikett der CD: leer (Rohling) oder mit Foto
+export function drawCdLabel(canvas, photo = null) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2, R = w / 2;
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    if (photo) {
+        const s = Math.max(w / photo.width, h / photo.height);
+        ctx.drawImage(photo, cx - photo.width * s / 2, cy - photo.height * s / 2, photo.width * s, photo.height * s);
+        ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, h * 0.74, w, h * 0.14);
+        ctx.fillStyle = '#fff'; ctx.font = `bold ${w * 0.07}px Segoe UI, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('★ MEIN FOTO ★', cx, h * 0.81);
+    } else {
+        const gr = ctx.createLinearGradient(0, 0, w, h);
+        gr.addColorStop(0, '#fdfbff'); gr.addColorStop(1, '#e6e9f2');
+        ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = '#b9c0cf'; ctx.lineWidth = w * 0.006;
+        for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(w * 0.22, h * (0.66 + i * 0.07)); ctx.lineTo(w * 0.78, h * (0.66 + i * 0.07)); ctx.stroke(); }
+        ctx.fillStyle = '#3b7ddd'; ctx.font = `bold ${w * 0.1}px Segoe UI, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('CD-R', cx, h * 0.24);
+        ctx.fillStyle = '#6b7180'; ctx.font = `bold ${w * 0.05}px Segoe UI, sans-serif`;
+        ctx.fillText('700 MB · 80 min', cx, h * 0.34);
+    }
+    ctx.restore();
+    // Mittelloch
+    ctx.fillStyle = '#c9ced8';
+    ctx.beginPath(); ctx.arc(cx, cy, R * 0.32, 0, Math.PI * 2); ctx.fill();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath(); ctx.arc(cx, cy, R * 0.13, 0, Math.PI * 2); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+}
+
+export function makeCD() {
+    const g = new THREE.Group();
+    const R = 0.06, T = 0.0024;
+    // Unterseite: Regenbogen-Schimmer
+    const shine = new THREE.MeshPhysicalMaterial({
+        color: 0xdfe6f0, metalness: 0.9, roughness: 0.12, iridescence: 1, iridescenceIOR: 1.6,
+        iridescenceThicknessMinimum: 180, iridescenceThicknessMaximum: 800, clearcoat: 1, side: THREE.DoubleSide,
+    });
+    const disc = new THREE.Mesh(new THREE.RingGeometry(0.0075, R, 64, 1), shine);
+    disc.rotation.x = Math.PI / 2;
+    disc.position.y = 0.0002;
+    g.add(disc);
+    const edge = new THREE.Mesh(new THREE.CylinderGeometry(R, R, T, 64, 1, true), mat(0xd8dde6, { metalness: 0.6, roughness: 0.3 }));
+    edge.position.y = T / 2;
+    edge.castShadow = true;
+    g.add(edge);
+    const labelCanvas = document.createElement('canvas');
+    labelCanvas.width = labelCanvas.height = 512;
+    drawCdLabel(labelCanvas);
+    const labelTex = new THREE.CanvasTexture(labelCanvas);
+    labelTex.colorSpace = THREE.SRGBColorSpace;
+    labelTex.anisotropy = 4;
+    // Kreis-Geometrie: UVs liegen genau im Quadrat der Canvas
+    const top = new THREE.Mesh(new THREE.CircleGeometry(R, 64), new THREE.MeshStandardMaterial({ map: labelTex, transparent: true, alphaTest: 0.5, roughness: 0.55, metalness: 0.1 }));
+    top.rotation.x = -Math.PI / 2;
+    top.position.y = T + 0.0001;
+    top.castShadow = true;
+    g.add(top);
+    g.userData = { size: new THREE.Vector3(R * 2, 0.004, R * 2), labelCanvas, labelTex, shine };
+    return g;
+}
+
+// ---------------- Radio (Deko, spielt Lieder vom USB-Stick) ----------------
+export function makeRadio() {
+    const g = new THREE.Group();
+    const W = 0.27, H = 0.135, D = 0.075;
+    g.add(at(rbox(W, H, D, 0xffd43b, { r: 0.018 }), 0, H / 2, 0));
+    const front = rbox(W - 0.02, H - 0.025, 0.006, 0x4a1f3a, { r: 0.008 });
+    at(front, 0, H / 2 - 0.004, D / 2);
+    g.add(front);
+    const cones = [];
+    for (const sx of [-1, 1]) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.036, 0.005, 10, 28), mat(0xd67c9c));
+        at(ring, sx * 0.082, H / 2 - 0.006, D / 2 + 0.004);
+        g.add(ring);
+        const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.034, 0.012, 24, 1, true), mat(0x23262e, { side: THREE.DoubleSide, roughness: 0.9 }));
+        cone.rotation.x = -Math.PI / 2;
+        at(cone, sx * 0.082, H / 2 - 0.006, D / 2 - 0.002);
+        g.add(cone);
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.01, 12, 8), mat(0xd67c9c));
+        cap.scale.z = 0.5;
+        at(cap, sx * 0.082, H / 2 - 0.006, D / 2 + 0.002);
+        g.add(cap);
+        cones.push(cone, cap);
+    }
+    // Anzeige in der Mitte
+    const disp = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.03), new THREE.MeshBasicMaterial({ color: 0x0f2a2a, toneMapped: false }));
+    at(disp, 0, H / 2 + 0.024, D / 2 + 0.0035);
+    g.add(disp);
+    const lbl = labelPlane(0.07, 0.012, 'RADIO · USB', { fg: '#ffd43b', font: 'bold 32px Segoe UI, sans-serif' });
+    at(lbl, 0, H / 2 - 0.006, D / 2 + 0.0035);
+    g.add(lbl);
+    // Henkel
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.008, 10, 30, Math.PI), mat(0x3a3f4b));
+    at(handle, 0, H - 0.004, 0);
+    g.add(handle);
+    // Antenne
+    const ant = cyl(0.002, 0.002, 0.16, 0xd8dbe2, 6, { metalness: 0.9, roughness: 0.3 });
+    ant.rotation.z = -0.5;
+    at(ant, 0.13, H + 0.06, -0.02);
+    g.add(ant);
+    // Knöpfe oben
+    for (const x of [-0.03, 0.03]) g.add(at(cyl(0.008, 0.008, 0.008, 0xd67c9c, 12), x, H + 0.003, 0.01));
+    g.userData = { size: new THREE.Vector3(W, H, D), cones, disp, frontZ: D / 2 + 0.004, portPos: new THREE.Vector3(0, 0.022, 0) };
     return g;
 }
 

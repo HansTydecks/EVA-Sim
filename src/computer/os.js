@@ -183,7 +183,7 @@ function drawDesktop(os, ctx, W, H) {
     ctx.fillText('Verbundene Geräte:', W / 2, 300);
     ctx.font = '26px Segoe UI, sans-serif';
     devs.forEach((d, i) => {
-        const col = d.def.cat.includes('E') && d.def.cat.includes('A') ? '#c58cf0' : d.def.cat[0] === 'E' ? '#6fdc98' : '#ffb066';
+        const col = d.def.cat.includes('E') && d.def.cat.includes('A') ? '#c58cf0' : d.def.cat[0] === 'E' ? '#6fdc98' : d.def.cat[0] === 'S' ? '#5fd6d6' : '#ffb066';
         ctx.fillStyle = col;
         ctx.fillText(`${d.def.name}`, W / 2, 345 + i * 38);
     });

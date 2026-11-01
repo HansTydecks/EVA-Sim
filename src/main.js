@@ -16,6 +16,7 @@ import { Guide } from './ui/guide.js';
 import { Hud } from './ui/hud.js';
 import { Sorter } from './game/sorting.js';
 import { Progression } from './game/progression.js';
+import { Storage } from './game/storage.js';
 
 // ------------------------------------------------------------ Grundgerüst
 const container = document.getElementById('app');
@@ -69,7 +70,7 @@ D.monitor = new Device(game, 'monitor', { position: new THREE.Vector3(-0.02, 0.7
 for (const [type, x, y] of PORT_LAYOUT) game.ports.push(new Port(D.tower.object, type, x, y, D.tower.object.userData.frontZ));
 D.monitor.plug.placeRest(new THREE.Vector3(0.3, 0.763, 0.0), new THREE.Vector3(1, 0, 0.6));
 
-for (const id of ['mouse', 'keyboard', 'speakers', 'scanner', 'midi', 'mic', 'webcam', 'printer', 'touch']) {
+for (const id of ['mouse', 'keyboard', 'speakers', 'scanner', 'midi', 'mic', 'webcam', 'printer', 'touch', 'hdd', 'usbstick', 'cd']) {
     D[id] = new Device(game, id, { position: new THREE.Vector3(0, -5, 0) });
     D[id].hide();
 }
@@ -135,7 +136,7 @@ game.groundAt = (pos) => {
     downRay.set(new THREE.Vector3(pos.x, Math.max(pos.y + 0.25, 0.3), pos.z), DOWN);
     downRay.far = 3;
     const roots = [room.staticGroup];
-    for (const d of Object.values(D)) if (d.visible && !d.held && !d.sorted) roots.push(d.object);
+    for (const d of Object.values(D)) if (d.visible && !d.held && !d.sorted && d.id !== 'cd' && d.id !== 'usbstick') roots.push(d.object);
     const hits = downRay.intersectObjects(roots, true);
     for (const h of hits) if (h.object.visible && !h.object.userData.noRaycast) return h.point.y;
     return 0;
@@ -146,7 +147,7 @@ game.raycastRoots = () => {
     for (const d of Object.values(D)) {
         if (!d.visible) continue;
         r.push(d.object);
-        if (d.plug && !d.plug.hidden) r.push(d.plug.object);
+        if (d.plug && !d.plug.hidden && !d.plug.isStick) r.push(d.plug.object);
     }
     for (const it of game.items) r.push(it.object);
     return r;
@@ -155,6 +156,7 @@ game.raycastRoots = () => {
 game.hand = new HandController(game);
 game.sorter = new Sorter(game, game.boxes);
 game.progression = new Progression(game);
+game.storage = new Storage(game);
 
 // ------------------------------------------------------------ Geräte-Verhalten
 D.mouse.clickHandler = () => {
@@ -208,7 +210,7 @@ D.touch.clickHandler = (hit) => {
 };
 
 // ------------------------------------------------------------ Ereignisse
-game.on('plugged', ({ device }) => {
+game.on('plugged', ({ device, port }) => {
     game.activity();
     game.guide.burst(device.plug.object.position.clone(), [0x44ff66, 0xffffff], 12, 0.5);
     switch (device.id) {
@@ -226,7 +228,7 @@ game.on('plugged', ({ device }) => {
             break;
         }
     }
-    if (device.id !== 'monitor') game.hud.toast(`🔌 ${device.def.name} verbunden!`, 'good', 1.6);
+    if (device.id !== 'monitor' && !port?.external) game.hud.toast(`🔌 ${device.def.name} verbunden!`, 'good', 1.6);
 });
 game.on('unplugged', ({ device }) => {
     if (device?.id === 'speakers') game.audio.setSpeakers(false);
@@ -376,6 +378,7 @@ function animateKey(k) {
 window.addEventListener('keydown', e => {
     if (!game.hand.enabled) return;
     const k = e.key;
+    if ((e.ctrlKey || e.metaKey) && (k === 's' || k === 'S')) e.preventDefault();
     if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'Tab'].includes(k)) e.preventDefault();
     game.audio.init();
     game.activity();
@@ -462,6 +465,7 @@ function loop() {
     game.touchApp.update(dt);
     if (game.touchApp.on) touchTex.needsUpdate = true;
     game.guide.update(dt, t);
+    game.storage.update(dt, t);
     updateScanner(dt);
     game.fun.update(dt);
     game.outside.update(dt, t);
@@ -549,9 +553,15 @@ Object.assign(window.__eva, {
     step() { return game.progression.step?.id; },
     plug(id) {
         const d = D[id];
-        const p = game.ports.find(p => p.type === d.plug.type && !p.plug);
+        const p = game.ports.find(p => p.type === d.plug.type && !p.plug && !p.external);
         d.plug.plugInto(p);
     },
+    plugStickRadio() {
+        const st = game.storage;
+        D.usbstick.plug.unplug();
+        D.usbstick.plug.plugInto(st.radioPort);
+    },
+    insertCd() { game.storage.trayOpen = true; game.storage.trayT = 1; game.storage.insertCd(); },
     sortInto(id, cat) {
         const d = D[id];
         const b = game.boxes.find(b => b.cat === cat);

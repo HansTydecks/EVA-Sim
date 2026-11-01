@@ -121,6 +121,34 @@ export class Audio {
         for (let i = 0; i < 10; i++) this.noise(0.12, { vol: 0.08, freq: 900 + (i % 2) * 400, q: 3, delay: i * 0.17 });
     }
 
+    // Speicher-Geräusche
+    hddWrite(dur = 1.4) {
+        // Festplatte: leises Surren + Klackern des Lesekopfs
+        this.tone(118, dur, { type: 'triangle', vol: 0.05, attack: 0.08 });
+        const n = Math.round(dur * 14);
+        for (let i = 0; i < n; i++) this.noise(0.014, { vol: 0.16, freq: 2200 + Math.random() * 1800, q: 3, delay: Math.random() * dur });
+    }
+    driveMotor() {
+        this.tone(85, 0.55, { type: 'sawtooth', vol: 0.035, slideTo: 150, attack: 0.04 });
+        this.noise(0.5, { vol: 0.05, freq: 420, q: 0.7, type: 'lowpass' });
+        this.noise(0.05, { vol: 0.14, freq: 700, q: 1, delay: 0.5 });
+    }
+    burnHum(dur = 4) {
+        this.tone(150, dur, { type: 'triangle', vol: 0.05, attack: 0.3, slideTo: 260 });
+        this.tone(2600, dur, { type: 'sine', vol: 0.012, attack: 0.3 });
+        for (let i = 0; i < dur * 3; i++) this.noise(0.3, { vol: 0.035, freq: 900, q: 0.5, delay: i / 3 });
+    }
+    powerDown() {
+        this.tone(240, 0.9, { type: 'sawtooth', vol: 0.07, slideTo: 30 });
+        this.noise(0.25, { vol: 0.18, freq: 300, q: 0.7, type: 'lowpass' });
+    }
+    // Radio hat einen eigenen kleinen Lautsprecher (Raum-Bus, immer hörbar)
+    radioNote(freq, dur = 0.35, delay = 0) {
+        this.tone(freq, dur, { type: 'square', vol: 0.045, delay, attack: 0.01 });
+        this.tone(freq, dur * 1.2, { type: 'triangle', vol: 0.16, delay, attack: 0.01 });
+        this.tone(freq / 2, dur, { type: 'sine', vol: 0.08, delay, attack: 0.01 });
+    }
+
     // ---------- Computer-Ausgabe (nur mit Lautsprechern) ----------
     pcBlip(freq = 880) { this.tone(freq, 0.1, { type: 'sine', vol: 0.12, bus: 'pc' }); }
     startupJingle() {

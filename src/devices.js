@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as M from './scene/models.js';
-import { Plug, PORT_TYPES } from './interaction/cables.js';
+import { Plug, StickPlug, PORT_TYPES } from './interaction/cables.js';
 
 const _e = new THREE.Euler();
 const _v = new THREE.Vector3();
@@ -151,6 +151,18 @@ export const DEVICE_DEFS = {
         gen: 'des Touchscreens', name: 'Touchscreen', emoji: '📱', cat: ['E', 'A'], port: 'usbc', cable: 1.7, mass: 1.2,
         why: 'Der Touchscreen zeigt Bilder (Ausgabe) und spürt deinen Finger (Eingabe).',
     },
+    hdd: {
+        gen: 'der Festplatte', name: 'Festplatte', emoji: '💽', cat: ['S'], port: 'usb', cable: 0.9, mass: 0.3,
+        why: 'Die Festplatte rechnet nichts und zeigt nichts – sie MERKT SICH deine Dateien, auch ohne Strom. SPEICHER!',
+    },
+    usbstick: {
+        gen: 'des USB-Sticks', name: 'USB-Stick', emoji: '💾', cat: ['S'], port: 'usb', stick: true, mass: 0.05,
+        why: 'Auf dem USB-Stick liegt dein Lied – und du kannst ihn überallhin mitnehmen. SPEICHER!',
+    },
+    cd: {
+        gen: 'der CD', name: 'CD', emoji: '💿', cat: ['S'], port: null, mass: 0.05,
+        why: 'Auf der CD ist dein Foto eingebrannt – sie merkt es sich. SPEICHER!',
+    },
 };
 
 const BUILDERS = {
@@ -165,6 +177,9 @@ const BUILDERS = {
     webcam: () => M.makeWebcam(),
     printer: () => M.makePrinter(),
     touch: () => M.makeTouchscreen(),
+    hdd: () => M.makeHdd(),
+    usbstick: () => M.makeUsbStick(),
+    cd: () => M.makeCD(),
 };
 
 export class Device extends PhysItem {
@@ -180,7 +195,7 @@ export class Device extends PhysItem {
         this.home = position.clone();
         this.homeYaw = yaw;
         this.sortable = false;
-        this.plug = def.port ? new Plug(game, this, def.port, def.cable) : null;
+        this.plug = def.stick ? new StickPlug(game, this) : def.port ? new Plug(game, this, def.port, def.cable) : null;
         this.isFixed = isStatic;
         if (isStatic) this.setFixed(true);
         this.clickHandler = null;
@@ -200,7 +215,8 @@ export class Device extends PhysItem {
         }
     }
 
-    get plugged() { return !!(this.plug && this.plug.port); }
+    // eingesteckt = mit dem Computer verbunden (eine Buchse am Radio zählt nicht)
+    get plugged() { return !!(this.plug && this.plug.port && !this.plug.port.external); }
 
     anchorWorld(target = new THREE.Vector3()) {
         return this.object.localToWorld(target.copy(this.object.userData.anchor || _v.set(0, 0.02, 0)));
@@ -219,13 +235,20 @@ export class Device extends PhysItem {
         }
         if (this.sorted) return `${d.emoji} ${d.name} – einsortiert ✓`;
         let s = `${d.emoji} ${d.name}`;
+        if (this.extraTip) s += this.extraTip();
+        if (this.plug?.isStick) {
+            if (this.plug.port?.external) s += ' · steckt im Radio';
+            else if (this.plug.port) s += ' · eingesteckt ✓';
+            if (this.sortable) s += ' · ab in den Karton!';
+            return s;
+        }
         if (this.plug && !this.plug.hidden) s += this.plugged ? ' · eingesteckt ✓' : ' · nicht eingesteckt';
         if (this.sortable) s += ' · ab in den Karton!';
         else if (this.locked && this.id !== 'tower' && this.id !== 'monitor') s += '';
         return s;
     }
 
-    canGrab() { return !this.sorted && !this.locked && this.visible; }
+    canGrab() { return !this.sorted && !this.locked && this.visible && !(this.canGrabExtra && !this.canGrabExtra()); }
 
     click(hit) {
         return this.clickHandler ? this.clickHandler(hit) : false;
@@ -236,7 +259,9 @@ export class Device extends PhysItem {
             // Computer wird weggeräumt: alle Kabel ziehen
             for (const p of this.game.ports) if (p.plug) p.plug.hide();
         }
-        if (this.sortable && this.plug && !this.plug.hidden) {
+        if (this.plug?.isStick && this.plug.port) {
+            this.plug.unplug();
+        } else if (this.sortable && this.plug && !this.plug.hidden) {
             this.plug.hide();
             this.game.audio.unplug();
             this.game.emit('unplugged', { device: this });
@@ -245,8 +270,23 @@ export class Device extends PhysItem {
         this.game.emit('grab', { device: this });
     }
 
+    holdAt(point, normal) {
+        super.holdAt(point, normal);
+        if (this.plug?.isStick) this.plug.hover(this.object.position.clone());
+        this.onHold?.();
+    }
+
+    release(vel) {
+        if (this.plug?.isStick && this.plug.hoverPort) {
+            this.held = false;
+            if (this.plug.releaseInto()) { this.game.emit('release', { device: this }); return; }
+        }
+        if (this.onReleaseHook?.(vel)) { this.held = false; return; }
+        super.release(vel);
+    }
+
     constrain(p) {
-        if (this.plugged && !this.sortable) {
+        if (this.plug && !this.plug.isStick && this.plugged && !this.sortable) {
             const port = this.plug.port.worldPos(new THREE.Vector3());
             const max = this.def.cable - 0.08;
             const a = p.clone(); a.y += 0.03;
@@ -270,7 +310,7 @@ export class Device extends PhysItem {
     }
 
     onRespawn() {
-        if (this.plug && !this.plug.hidden && !this.plugged && !this.plug.held) this.placePlugNear(this.home);
+        if (this.plug && !this.plug.isStick && !this.plug.hidden && !this.plugged && !this.plug.held) this.placePlugNear(this.home);
     }
 
     spawn(pos, yaw = 0) {
@@ -280,7 +320,7 @@ export class Device extends PhysItem {
         this.object.visible = true;
         this.game.physics.makeDynamic(this.body);
         this.setPosition(pos.clone().setY(pos.y + 0.45), yaw);
-        if (this.plug) {
+        if (this.plug && !this.plug.isStick) {
             this.placePlugNear(pos);
             this.plug.object.visible = true;
             this.plug.cable.visible = true;
@@ -301,6 +341,7 @@ export class Device extends PhysItem {
 
     update(dt) {
         super.update(dt);
+        if (this.plug?.isStick) { if (this.visible) this.plug.update(dt); return; }
         if (this.plug && this.visible) {
             // loser Stecker auf dem Boden? Zurück neben das Gerät
             const pl = this.plug;
