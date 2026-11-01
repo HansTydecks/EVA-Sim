@@ -22,10 +22,14 @@ const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 
 export class Port {
-    constructor(tower, type, x, y, frontZ) {
+    // opts.external: Buchse an einem anderen Gerät (z. B. Radio), opts.stickOnly: nur für den USB-Stick
+    constructor(tower, type, x, y, frontZ, opts = {}) {
         this.tower = tower;
         this.type = type;
         this.plug = null;
+        this.external = !!opts.external;
+        this.stickOnly = !!opts.stickOnly;
+        this.owner = opts.owner || 'computer';
         const t = PORT_TYPES[type];
         this.local = new THREE.Vector3(x, y, frontZ);
         const g = new THREE.Group();
@@ -174,6 +178,7 @@ export class Plug {
         // Nächste Buchse suchen
         let best = null, bestD = 0.09;
         for (const p of this.game.ports) {
+            if (p.stickOnly || !p.mesh.visible) continue;
             const pp = p.worldPos(new THREE.Vector3()).addScaledVector(p.outward(new THREE.Vector3()), 0.03);
             const dd = pp.distanceTo(pos);
             if (dd < bestD) { bestD = dd; best = p; }
@@ -284,5 +289,103 @@ export class Plug {
         const geo = new THREE.TubeGeometry(curve, 36, 0.0055, 6, false);
         this.cable.geometry.dispose();
         this.cable.geometry = geo;
+    }
+}
+
+// USB-Stick: Das Gerät IST der Stecker (kein Kabel). Passt in jede freie blaue USB-Buchse –
+// am Computer und am Radio. Die Hand hält das Gerät selbst; diese Klasse kümmert sich ums Einstecken.
+export class StickPlug {
+    constructor(game, device) {
+        this.game = game;
+        this.device = device;
+        this.type = 'usb';
+        this.port = null;
+        this.held = false;
+        this.hidden = false;
+        this.kind = 'plug';
+        this.isStick = true;
+        this.object = device.object;
+        this.cable = { visible: false };
+        this.restPos = new THREE.Vector3();
+        this.cableLen = 99;
+        this.hoverPort = null;
+    }
+
+    placeRest() {}
+    applyRest() {}
+
+    // Wird aufgerufen, während die Hand den Stick hält: nächste Buchse suchen und magnetisch hinziehen
+    hover(pos) {
+        let best = null, bestD = 0.1;
+        for (const p of this.game.ports) {
+            if (!p.mesh.visible) continue;
+            const pp = p.worldPos(new THREE.Vector3()).addScaledVector(p.outward(new THREE.Vector3()), 0.04);
+            const dd = pp.distanceTo(pos);
+            if (dd < bestD) { bestD = dd; best = p; }
+        }
+        for (const p of this.game.ports) if (p.highlight === 'good' || p.highlight === 'bad') p.setHighlight('none');
+        this.hoverPort = best;
+        if (!best) return false;
+        const ok = best.type === 'usb' && !best.plug;
+        best.setHighlight(ok ? 'good' : 'bad');
+        if (ok) {
+            // Stick vor der Buchse ausrichten (Stecker zeigt hinein)
+            const out = best.outward(new THREE.Vector3());
+            const target = this.seatPos(best, 0.035);
+            const o = this.object;
+            o.position.lerp(target, 0.75);
+            o.lookAt(_v.copy(o.position).add(out));
+            return true;
+        }
+        return false;
+    }
+
+    seatPos(port, extra = 0) {
+        const out = port.outward(new THREE.Vector3());
+        const tipZ = -(this.object.userData.tipZ ?? -0.035);
+        const h = this.object.userData.size.y / 2;
+        return port.worldPos(new THREE.Vector3()).addScaledVector(out, tipZ - 0.011 + extra).add(_v.set(0, -h, 0));
+    }
+
+    releaseInto() {
+        const p = this.hoverPort;
+        for (const port of this.game.ports) if (port.highlight === 'good' || port.highlight === 'bad') port.setHighlight('none');
+        this.hoverPort = null;
+        if (!p) return false;
+        if (p.type === 'usb' && !p.plug) { this.plugInto(p); return true; }
+        this.game.audio.error();
+        this.game.emit('wrongPort', { plug: this, port: p });
+        return false;
+    }
+
+    plugInto(port, silent = false) {
+        this.port = port;
+        port.plug = this;
+        this.game.physics.makeKinematic(this.device.body);
+        this.followPort();
+        if (!silent) this.game.audio.plugIn();
+        this.game.emit('plugged', { plug: this, device: this.device, port });
+    }
+
+    unplug(silent = false) {
+        if (!this.port) return;
+        const port = this.port;
+        port.plug = null;
+        this.port = null;
+        if (!silent) this.game.audio.unplug();
+        this.game.emit('unplugged', { plug: this, device: this.device, port });
+    }
+
+    followPort() {
+        const o = this.object;
+        o.position.copy(this.seatPos(this.port));
+        o.lookAt(_v.copy(o.position).add(this.port.outward(new THREE.Vector3())));
+        this.game.physics.placeBody(this.device.body, o);
+    }
+
+    hide() { this.unplug(true); }
+
+    update() {
+        if (this.port && !this.device.held) this.followPort();
     }
 }

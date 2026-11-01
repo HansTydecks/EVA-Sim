@@ -11,6 +11,7 @@
     --e: #2fae5f;
     --v: #3b7ddd;
     --a: #f08a24;
+    --s: #14a3a3;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -230,6 +231,8 @@ html, body {
 .eva-e { background: var(--e); }
 .eva-v { background: var(--v); }
 .eva-a { background: var(--a); }
+.eva-s { background: var(--s); }
+.eva-card.no-s .eva-s-part { display: none; }
 .eva-arrow { font-size: 20px; color: var(--accent-light); }
 
 /* Tooltip & Toast */
@@ -293,7 +296,7 @@ html, body {
 }
 .start-card h1, .end-card h1 { font-size: 34px; color: var(--accent-light); margin-bottom: 4px; }
 .subtitle { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
-.c-e { color: #6fdc98; } .c-v { color: #7fb0f5; } .c-a { color: #ffb066; }
+.c-e { color: #6fdc98; } .c-v { color: #7fb0f5; } .c-a { color: #ffb066; } .c-s { color: #5fd6d6; }
 .start-card p, .end-card p { color: var(--text2); line-height: 1.5; margin: 8px 0; }
 .howto {
     display: grid;
@@ -331,7 +334,7 @@ html, body {
 .start-btn:disabled { opacity: 0.5; cursor: wait; }
 .small { font-size: 12.5px; opacity: 0.8; }
 
-.end-boxes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+.end-boxes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 16px 0; }
 .end-box { border-radius: 12px; padding: 10px; text-align: left; }
 .end-box h3 { font-size: 16px; margin-bottom: 6px; text-align: center; }
 .end-box ul { list-style: none; font-size: 14px; line-height: 1.6; }
@@ -350,7 +353,7 @@ html, body {
 
 @media (max-width: 760px) {
     .howto { grid-template-columns: 1fr; }
-    .end-boxes { grid-template-columns: 1fr; }
+    .end-boxes { grid-template-columns: 1fr 1fr; }
     .controls-hint { display: none; }
     .eva-step { min-width: 80px; padding: 4px 6px; }
     .eva-dev { font-size: 12px; }

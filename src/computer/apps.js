@@ -587,6 +587,7 @@ export class CameraApp {
         this.preview = { x: 40, y: TOPBAR + 70, w: 640, h: 400 };
         this.filterBtns = FILTERS.map((f, i) => ({ id: f[0], label: f[1], x: 712, y: TOPBAR + 70 + i * 62, w: 280, h: 52 }));
         this.shutter = { x: 712, y: TOPBAR + 400, w: 280, h: 72 };
+        this.burnBtn = { x: 712, y: TOPBAR + 500, w: 280, h: 60 };
         this.flash = 0;
         this.printing = 0;
         this.photos = 0;
@@ -623,10 +624,20 @@ export class CameraApp {
     onClick(x, y) {
         for (const b of this.filterBtns) if (inRect(x, y, b)) { this.filter = b.id; this.os.game.audio.pcBlip(700); this.os.game.activity(); return; }
         if (inRect(x, y, this.shutter)) this.takePhoto();
+        else if (this.burnVisible && inRect(x, y, this.burnBtn)) this.burn();
     }
     onKey(e) {
         if (e.key === ' ' || e.key === 'Enter') { this.takePhoto(); return true; }
+        if (this.burnVisible && (e.key === 'b' || e.key === 'B')) { this.burn(); return true; }
         return false;
+    }
+    get burnVisible() { return !!this.os.game.storage?.burnEnabled; }
+    burn() {
+        const st = this.os.game.storage;
+        const err = st.requestBurn();
+        if (err) { this.say(err); this.os.game.audio.error(); }
+        else this.os.game.audio.pcBlip(660);
+        this.os.game.activity();
     }
     say(m) { this.msg = m; this.msgT = 3; }
     takePhoto() {
@@ -640,6 +651,7 @@ export class CameraApp {
         const photo = document.createElement('canvas');
         photo.width = this.fw; photo.height = this.fh;
         photo.getContext('2d').drawImage(this.feed, 0, 0);
+        if (g.storage) g.storage.photo = photo;
         this.printing = 3;
         this.photos++;
         this.say('Wird gedruckt …');
@@ -675,7 +687,23 @@ export class CameraApp {
         ctx.textAlign = 'center';
         ctx.fillStyle = '#e0c5d0';
         ctx.font = `20px ${FONT}`;
-        ctx.fillText('Klicken oder Leertaste', this.shutter.x + this.shutter.w / 2, this.shutter.y + this.shutter.h + 22);
+        const st = this.os.game.storage;
+        if (this.burnVisible) {
+            const burning = st.burnT > 0;
+            button(ctx, this.burnBtn, burning ? '🔥 Brennt …' : st.cdBurned ? '💿 Gebrannt ✓' : '💿 Auf CD brennen (B)', { color: '#14a3a3', hover: inRect(cur.x, cur.y, this.burnBtn), font: `bold 24px ${FONT}` });
+            if (burning) {
+                const k = 1 - st.burnT / st.burnDur;
+                const p = this.preview;
+                ctx.fillStyle = 'rgba(0,0,0,0.72)';
+                roundRect(ctx, p.x + 60, p.y + p.h / 2 - 70, p.w - 120, 140, 18); ctx.fill();
+                ctx.fillStyle = '#fff'; ctx.font = `bold 30px ${FONT}`; ctx.textAlign = 'center';
+                ctx.fillText('💿 Laser brennt dein Foto auf die CD …', p.x + p.w / 2, p.y + p.h / 2 - 28);
+                ctx.fillStyle = '#333'; roundRect(ctx, p.x + 100, p.y + p.h / 2 + 10, p.w - 200, 26, 13); ctx.fill();
+                ctx.fillStyle = '#ff7a3d'; roundRect(ctx, p.x + 100, p.y + p.h / 2 + 10, (p.w - 200) * k, 26, 13); ctx.fill();
+                ctx.fillStyle = '#e0c5d0'; ctx.font = `20px ${FONT}`;
+                ctx.fillText(`${Math.round(k * 100)} %`, p.x + p.w / 2, p.y + p.h / 2 + 58);
+            }
+        } else ctx.fillText('Klicken oder Leertaste', this.shutter.x + this.shutter.w / 2, this.shutter.y + this.shutter.h + 22);
         if (this.msgT > 0) {
             ctx.fillStyle = 'rgba(0,0,0,0.7)';
             roundRect(ctx, p.x + 60, p.y + p.h - 70, p.w - 120, 54, 14); ctx.fill();
@@ -684,6 +712,360 @@ export class CameraApp {
         }
     }
 }
+
+
+// ---------------------------------------------------------------- Texteditor mit Speichern (Festplatte)
+class EditorApp {
+    constructor(os) {
+        this.os = os;
+        this.title = 'Textverarbeitung – hallo.txt';
+        this.text = 'HALLO COMPUTER';
+        this.extra = '';
+        this.mode = 'save';     // save | saving | saved | extra
+        this.progress = 0;
+        this.msg = ''; this.msgT = 0; this.msgBad = false;
+        this.shake = 0;
+        this.saveBtn = { x: 744, y: TOPBAR + 16, w: 250, h: 62 };
+        this.t = 0;
+    }
+    get game() { return this.os.game; }
+    say(m, bad = false, dur = 3.5) { this.msg = m; this.msgT = dur; this.msgBad = bad; }
+    startExtra() { this.mode = 'extra'; this.extra = ''; this.say('Tippe deinen Namen – aber NICHT speichern!', false, 99); }
+    trySave() {
+        const g = this.game;
+        g.activity();
+        if (this.mode === 'extra') { this.say('Psst – diesmal NICHT speichern! 😉', true); g.audio.error(); return; }
+        if (this.mode !== 'save') return;
+        if (!g.devices.hdd?.plugged) {
+            this.say('⚠ Kein Speicher gefunden! Wohin soll ich die Datei schreiben?', true, 4);
+            this.shake = 0.5;
+            g.audio.error();
+            g.flags.saveFailed = true;
+            return;
+        }
+        this.mode = 'saving';
+        this.progress = 0;
+        g.audio.hddWrite(1.5);
+        g.storage.blink(g.devices.hdd, 1.5, 0x22aaff);
+    }
+    onClick(x, y) { if (inRect(x, y, this.saveBtn)) this.trySave(); }
+    onKey(e) {
+        const k = e.key;
+        if (((e.ctrlKey || e.metaKey) && (k === 's' || k === 'S')) || k === 'Enter') { this.trySave(); return true; }
+        if (this.mode === 'extra') {
+            if (k === 'Backspace') { this.extra = this.extra.slice(0, -1); return true; }
+            if (k.length === 1 && this.extra.length < 18) {
+                this.extra += k.toUpperCase();
+                this.game.audio.pcBlip(560 + this.extra.length * 25);
+                this.game.storage.unsaved = this.extra.trim();
+                if (this.extra.trim().length >= 3) this.game.flags.extraTyped = true;
+            }
+            return true;
+        }
+        if (k.length === 1 && this.mode === 'save') this.say('Erst speichern: Strg + S oder Enter', false, 2.5);
+        return true;
+    }
+    update(dt) {
+        this.t += dt;
+        this.msgT = Math.max(0, this.msgT - dt);
+        this.shake = Math.max(0, this.shake - dt);
+        if (this.mode === 'saving') {
+            this.progress = Math.min(1, this.progress + dt / 1.5);
+            if (this.progress >= 1) {
+                this.mode = 'saved';
+                const st = this.game.storage;
+                if (!st.hdd.find(f => f.name === 'hallo.txt')) st.hdd.push({ name: 'hallo.txt', icon: '📄', text: this.text });
+                this.os.showBanner('💽 Gespeichert auf der Festplatte!', '#14a3a3', 3);
+                this.game.audio.chime();
+                this.game.flags.saved = true;
+            }
+        }
+    }
+    draw(ctx) {
+        // Werkzeugleiste
+        const cur = this.os.cursor;
+        const can = this.mode === 'save';
+        button(ctx, this.saveBtn, this.mode === 'saving' ? 'Speichert …' : '💾 Speichern', { color: can ? '#14a3a3' : '#5b6170', hover: can && inRect(cur.x, cur.y, this.saveBtn), font: `bold 28px ${FONT}` });
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#e0c5d0'; ctx.font = `22px ${FONT}`;
+        ctx.fillText('Speichern: Strg + S  oder  Enter  oder  💾 anklicken', 40, TOPBAR + 47);
+        // Blatt Papier
+        const px = 90, py = TOPBAR + 96, pw = W - 180, ph = 270;
+        const sx = this.shake > 0 ? Math.sin(this.shake * 70) * 8 : 0;
+        ctx.fillStyle = '#fdfcfa';
+        roundRect(ctx, px + sx, py, pw, ph, 10); ctx.fill();
+        ctx.fillStyle = '#d9d3cc';
+        for (let i = 0; i < 4; i++) ctx.fillRect(px + 40 + sx, py + 120 + i * 34, pw - 80, 2);
+        ctx.fillStyle = '#2a1a2e'; ctx.font = `bold 52px ${FONT}`;
+        ctx.fillText(this.text, px + 40 + sx, py + 70);
+        let x = px + 40 + sx + ctx.measureText(this.text).width;
+        if (this.extra) {
+            ctx.fillStyle = '#d6336c';
+            const ex = ' ' + this.extra;
+            ctx.fillText(ex, x, py + 70);
+            x += ctx.measureText(ex).width;
+        }
+        if (this.mode === 'extra' && Math.sin(this.t * 6) > 0) { ctx.fillStyle = '#2a1a2e'; ctx.fillRect(x + 4, py + 44, 4, 52); }
+        // Status
+        ctx.textAlign = 'center';
+        if (this.mode === 'saving') {
+            ctx.fillStyle = 'rgba(0,0,0,0.75)'; roundRect(ctx, 232, 300, 560, 130, 18); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font = `bold 30px ${FONT}`;
+            ctx.fillText('💽 Schreibe auf die Festplatte …', W / 2, 340);
+            ctx.fillStyle = '#333'; roundRect(ctx, 282, 372, 460, 26, 13); ctx.fill();
+            ctx.fillStyle = '#14a3a3'; roundRect(ctx, 282, 372, 460 * this.progress, 26, 13); ctx.fill();
+        }
+        const st = this.game.storage;
+        ctx.fillStyle = '#e0c5d0'; ctx.font = `22px ${FONT}`;
+        const where = st.hdd.find(f => f.name === 'hallo.txt') ? '💽 Festplatte: hallo.txt ✓ gespeichert' : '⚠ noch nicht gespeichert';
+        ctx.fillText(this.mode === 'extra' && this.extra ? `${where}   ·   „${this.extra.trim()}“ ist NICHT gespeichert` : where, W / 2, py + ph + 30);
+        if (this.msgT > 0) {
+            ctx.fillStyle = this.msgBad ? 'rgba(200,40,40,0.92)' : 'rgba(20,163,163,0.92)';
+            roundRect(ctx, 140, py + ph + 52, W - 280, 52, 14); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font = `bold 26px ${FONT}`;
+            ctx.fillText(this.msg, W / 2, py + ph + 79);
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Datei-Explorer
+const DRIVE_DEFS = [
+    { id: 'hdd', icon: '💽', name: 'Festplatte' },
+    { id: 'usb', icon: '💾', name: 'USB-Stick' },
+    { id: 'cd', icon: '💿', name: 'CD' },
+];
+class FilesApp {
+    constructor(os, opts = {}) {
+        this.os = os;
+        this.title = 'Dateien';
+        this.lost = opts.lost || '';
+        this.open = null;
+        this.drive = 'hdd';
+        this.t = 0;
+        if (opts.open) this.openFile(this.files('hdd').find(f => f.name === opts.open));
+    }
+    get game() { return this.os.game; }
+    drives() {
+        const D = this.game.devices, st = this.game.storage;
+        return DRIVE_DEFS.filter(d => (d.id === 'hdd' ? D.hdd?.plugged : d.id === 'usb' ? D.usbstick?.plugged : st.cd?.inTray));
+    }
+    files(id) {
+        const st = this.game.storage;
+        if (id === 'hdd') return st.hdd;
+        if (id === 'usb') return st.usb;
+        if (id === 'cd') return st.cdBurned ? [{ name: 'mein_foto.png', icon: '🖼️', photo: st.photo }] : [];
+        return [];
+    }
+    openFile(f) {
+        if (!f) return;
+        this.open = f;
+        this.game.audio.pcBlip(760);
+        if (f.notes) {
+            let t = 0;
+            for (const n of f.notes) { this.game.audio.tone(MIDI_NOTES[n.i].freq, 0.4, { type: 'triangle', vol: 0.2, bus: 'pc', delay: t }); t += n.d; }
+        }
+    }
+    onClick(x, y) {
+        if (this.open) { this.open = null; return; }
+        this.drives().forEach((d, i) => { if (inRect(x, y, { x: 30, y: TOPBAR + 70 + i * 90, w: 250, h: 76 })) { this.drive = d.id; this.game.audio.pcBlip(640); } });
+        this.files(this.drive).forEach((f, i) => { if (inRect(x, y, this.tile(i))) this.openFile(f); });
+    }
+    tile(i) { return { x: 320 + (i % 3) * 225, y: TOPBAR + 70 + Math.floor(i / 3) * 190, w: 205, h: 170 }; }
+    update(dt) { this.t += dt; }
+    draw(ctx) {
+        const cur = this.os.cursor;
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fff'; ctx.font = `bold 26px ${FONT}`;
+        ctx.fillText('Laufwerke', 34, TOPBAR + 40);
+        const drives = this.drives();
+        if (!drives.find(d => d.id === this.drive) && drives.length) this.drive = drives[0].id;
+        drives.forEach((d, i) => {
+            const b = { x: 30, y: TOPBAR + 70 + i * 90, w: 250, h: 76 };
+            ctx.fillStyle = d.id === this.drive ? '#14a3a3' : inRect(cur.x, cur.y, b) ? '#5a3a52' : 'rgba(255,255,255,0.08)';
+            roundRect(ctx, b.x, b.y, b.w, b.h, 14); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font = `36px ${FONT}`; ctx.fillText(d.icon, b.x + 16, b.y + 40);
+            ctx.font = `bold 24px ${FONT}`; ctx.fillText(d.name, b.x + 72, b.y + 40);
+        });
+        if (!drives.length) { ctx.fillStyle = '#e0c5d0'; ctx.font = `22px ${FONT}`; ctx.fillText('Kein Speicher verbunden', 34, TOPBAR + 100); }
+        const files = drives.length ? this.files(this.drive) : [];
+        files.forEach((f, i) => {
+            const b = this.tile(i);
+            ctx.fillStyle = inRect(cur.x, cur.y, b) ? '#5a3a52' : 'rgba(255,255,255,0.1)';
+            roundRect(ctx, b.x, b.y, b.w, b.h, 16); ctx.fill();
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#fff'; ctx.font = `70px ${FONT}`; ctx.fillText(f.icon, b.x + b.w / 2, b.y + 70);
+            ctx.font = `bold 22px ${FONT}`; ctx.fillText(f.name, b.x + b.w / 2, b.y + 140);
+            ctx.textAlign = 'left';
+        });
+        if (drives.length && !files.length) { ctx.fillStyle = '#e0c5d0'; ctx.font = `24px ${FONT}`; ctx.fillText('(leer)', 330, TOPBAR + 100); }
+        if (this.open) this.drawOpen(ctx);
+    }
+    drawOpen(ctx) {
+        const f = this.open;
+        const x = 150, y = TOPBAR + 40, w = W - 300, h = 470;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, TOPBAR, W, H - TOPBAR);
+        ctx.fillStyle = '#fdfcfa'; roundRect(ctx, x, y, w, h, 16); ctx.fill();
+        ctx.fillStyle = '#14a3a3'; roundRect(ctx, x, y, w, 56, 16); ctx.fill(); ctx.fillRect(x, y + 30, w, 26);
+        ctx.fillStyle = '#fff'; ctx.font = `bold 26px ${FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(`${f.icon} ${f.name}`, x + 20, y + 29);
+        ctx.textAlign = 'right'; ctx.font = `20px ${FONT}`; ctx.fillText('Klicken zum Schließen ✕', x + w - 20, y + 29);
+        ctx.textAlign = 'left';
+        if (f.text) {
+            ctx.fillStyle = '#2a1a2e'; ctx.font = `bold 52px ${FONT}`;
+            ctx.fillText(f.text, x + 40, y + 140);
+            if (this.lost) {
+                const tw = ctx.measureText(f.text + ' ').width;
+                ctx.globalAlpha = 0.35 + 0.15 * Math.sin(this.t * 4);
+                ctx.fillStyle = '#d6336c';
+                ctx.fillText(this.lost, x + 40 + tw, y + 140);
+                const lw = ctx.measureText(this.lost).width;
+                ctx.globalAlpha = 1;
+                ctx.strokeStyle = '#d6336c'; ctx.lineWidth = 5;
+                ctx.beginPath(); ctx.moveTo(x + 36 + tw, y + 140); ctx.lineTo(x + 44 + tw + lw, y + 140); ctx.stroke();
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#2fae5f'; ctx.font = `bold 30px ${FONT}`;
+                ctx.fillText(`✓ „${f.text}“ war gespeichert – es ist noch da!`, x + w / 2, y + 270);
+                ctx.fillStyle = '#d6336c';
+                ctx.fillText(`✗ „${this.lost}“ war nicht gespeichert – weg!`, x + w / 2, y + 330);
+                ctx.fillStyle = '#6b7180'; ctx.font = `22px ${FONT}`;
+                ctx.fillText('Ohne Strom vergisst der Arbeitsspeicher alles. Die Festplatte nicht.', x + w / 2, y + 400);
+            }
+        } else if (f.notes) {
+            ctx.textAlign = 'center'; ctx.fillStyle = '#2a1a2e'; ctx.font = `bold 30px ${FONT}`;
+            ctx.fillText('🎵 Dein Lied', x + w / 2, y + 110);
+            f.notes.forEach((n, i) => {
+                ctx.fillStyle = MIDI_NOTES[n.i].color;
+                const bx = x + 60 + i * ((w - 120) / f.notes.length);
+                const bh = 30 + n.i * 22;
+                roundRect(ctx, bx, y + 400 - bh, (w - 120) / f.notes.length - 10, bh, 8); ctx.fill();
+                ctx.fillStyle = '#fff'; ctx.font = `bold 22px ${FONT}`;
+                ctx.fillText(MIDI_NOTES[n.i].name, bx + ((w - 120) / f.notes.length - 10) / 2, y + 385);
+            });
+        } else if (f.photo) {
+            const pw = w - 120, ph = pw * f.photo.height / f.photo.width;
+            ctx.drawImage(f.photo, x + 60, y + 76, pw, Math.min(ph, h - 100));
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Aufnahme-Studio (MIDI → USB-Stick)
+const REC_LEN = 8;
+class RecordApp {
+    constructor(os) {
+        this.os = os;
+        this.title = 'Aufnahme-Studio';
+        this.notes = [];
+        this.lastT = 0;
+        this.t = 0;
+        this.mode = 'rec';    // rec | ready | saving | saved
+        this.progress = 0;
+        this.keyFlash = new Array(8).fill(0);
+        this.msg = ''; this.msgT = 0; this.msgBad = false;
+        this.saveBtn = { x: 560, y: 452, w: 330, h: 60 };
+        this.againBtn = { x: 134, y: 452, w: 330, h: 60 };
+    }
+    get game() { return this.os.game; }
+    get targetNote() { return null; }
+    say(m, bad = false) { this.msg = m; this.msgT = 3.5; this.msgBad = bad; }
+    noteOn(i) {
+        this.keyFlash[i] = 1;
+        this.game.audio.note(MIDI_NOTES[i].freq, 0.6);
+        if (this.mode !== 'rec') return;
+        const now = this.t;
+        if (this.notes.length) this.notes[this.notes.length - 1].d = THREE_clamp(now - this.lastT, 0.18, 0.7);
+        this.notes.push({ i, d: 0.4 });
+        this.lastT = now;
+        if (this.notes.length >= REC_LEN) {
+            this.mode = 'ready';
+            this.os.showBanner('🎵 Aufnahme fertig!', '#2fae5f', 2.5);
+            this.game.flags.recorded = true;
+        }
+    }
+    again() { this.notes = []; this.mode = 'rec'; this.game.audio.pcBlip(500); }
+    save() {
+        const g = this.game;
+        g.activity();
+        if (this.mode === 'rec') { this.say(`Spiel erst ${REC_LEN} Töne!`, true); return; }
+        if (this.mode !== 'ready') return;
+        if (!g.devices.usbstick?.plugged) { this.say('⚠ Kein USB-Stick im Computer!', true); g.audio.error(); return; }
+        this.mode = 'saving';
+        this.progress = 0;
+        g.storage.blink(g.devices.usbstick, 1.2, 0xff9933);
+        g.audio.noise(0.6, { vol: 0.05, freq: 5000, q: 2 });
+    }
+    onClick(x, y) {
+        if (inRect(x, y, this.saveBtn)) this.save();
+        else if (inRect(x, y, this.againBtn) && this.mode !== 'saving') this.again();
+    }
+    onKey(e) {
+        const k = e.key;
+        if (((e.ctrlKey || e.metaKey) && (k === 's' || k === 'S')) || k === 'Enter') { this.save(); return true; }
+        if (k === 'Backspace' && this.mode !== 'saving') { this.again(); return true; }
+        return false;
+    }
+    update(dt) {
+        this.t += dt;
+        this.msgT = Math.max(0, this.msgT - dt);
+        this.keyFlash = this.keyFlash.map(v => Math.max(0, v - dt * 3));
+        if (this.mode === 'saving') {
+            this.progress = Math.min(1, this.progress + dt / 1.2);
+            if (this.progress >= 1) {
+                this.mode = 'saved';
+                this.game.storage.usb = [{ name: 'mein_lied.mid', icon: '🎵', notes: this.notes.map(n => ({ ...n })) }];
+                this.os.showBanner('💾 Lied auf dem USB-Stick gespeichert!', '#14a3a3', 3);
+                this.game.audio.chime();
+                this.game.flags.songSaved = true;
+            }
+        }
+    }
+    draw(ctx) {
+        const head = this.mode === 'rec' ? ['● REC – Spiel dein eigenes Lied!', `Drück ${REC_LEN} Tasten auf dem MIDI-Keyboard – ganz wie du willst`]
+            : this.mode === 'saved' ? ['✓ Gespeichert: mein_lied.mid', 'Das Lied liegt jetzt auf dem USB-Stick']
+                : ['🎵 Dein Lied ist fertig!', 'Jetzt auf den USB-Stick speichern: Enter, Strg + S oder 💾'];
+        title(ctx, head[0], head[1]);
+        if (this.mode === 'rec' && Math.sin(this.t * 5) > 0) {
+            ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.arc(80, TOPBAR + 34, 14, 0, Math.PI * 2); ctx.fill();
+        }
+        // Notenband
+        const x0 = 100, w = W - 200, y0 = 150, h = 255;
+        ctx.fillStyle = 'rgba(255,255,255,0.06)'; roundRect(ctx, x0, y0, w, h, 16); ctx.fill();
+        const cw = w / REC_LEN;
+        for (let k = 0; k < REC_LEN; k++) {
+            const n = this.notes[k];
+            const bx = x0 + k * cw + 8;
+            if (!n) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 3; ctx.setLineDash([8, 8]);
+                roundRect(ctx, bx, y0 + h - 60, cw - 16, 44, 10); ctx.stroke(); ctx.setLineDash([]);
+                continue;
+            }
+            const bh = 40 + n.i * 25;
+            ctx.fillStyle = MIDI_NOTES[n.i].color;
+            roundRect(ctx, bx, y0 + h - 16 - bh, cw - 16, bh, 10); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font = `bold 28px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(MIDI_NOTES[n.i].name, bx + (cw - 16) / 2, y0 + h - 40);
+        }
+        ctx.fillStyle = '#e0c5d0'; ctx.font = `22px ${FONT}`; ctx.textAlign = 'center';
+        ctx.fillText(`${this.notes.length} / ${REC_LEN} Töne`, W / 2, y0 + h + 24);
+        const cur = this.os.cursor;
+        const canSave = this.mode === 'ready';
+        button(ctx, this.againBtn, '↺ Neu aufnehmen', { color: '#7a4a66', hover: inRect(cur.x, cur.y, this.againBtn), font: `bold 26px ${FONT}` });
+        button(ctx, this.saveBtn, this.mode === 'saving' ? 'Speichert …' : '💾 Auf USB-Stick speichern', { color: canSave ? '#14a3a3' : '#5b6170', hover: canSave && inRect(cur.x, cur.y, this.saveBtn), font: `bold 24px ${FONT}` });
+        if (this.mode === 'saving') {
+            ctx.fillStyle = 'rgba(0,0,0,0.75)'; roundRect(ctx, 232, 250, 560, 120, 18); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font = `bold 28px ${FONT}`;
+            ctx.fillText('💾 Schreibe auf den USB-Stick …', W / 2, 288);
+            ctx.fillStyle = '#333'; roundRect(ctx, 282, 318, 460, 24, 12); ctx.fill();
+            ctx.fillStyle = '#ff9933'; roundRect(ctx, 282, 318, 460 * this.progress, 24, 12); ctx.fill();
+        }
+        if (this.msgT > 0) {
+            ctx.fillStyle = this.msgBad ? 'rgba(200,40,40,0.92)' : 'rgba(20,163,163,0.92)';
+            roundRect(ctx, 200, 380, W - 400, 52, 14); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font = `bold 26px ${FONT}`;
+            ctx.fillText(this.msg, W / 2, 407);
+        }
+    }
+}
+function THREE_clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
 // ---------------------------------------------------------------- Touchscreen-Hinweis auf dem Hauptmonitor
 class TouchInfoApp {
@@ -705,6 +1087,9 @@ export const APPS = {
     sing: SingApp,
     camera: CameraApp,
     touchinfo: TouchInfoApp,
+    editor: EditorApp,
+    files: FilesApp,
+    record: RecordApp,
 };
 
 // ---------------------------------------------------------------- Touch-App auf dem Touchscreen-Gerät

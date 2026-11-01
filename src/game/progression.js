@@ -16,7 +16,11 @@ export const SPAWN = {
     webcam: [V(-0.22, 0.75, 0.03), 0],
     printer: [V(-0.5, 0.75, -0.1), 0.2],
     touch: [V(-0.44, 0.75, -0.02), 0.35],
+    hdd: [V(0.4, 0.75, -0.13), -0.35],
+    usbstick: [V(0.3, 0.75, 0.27), 0.9],
+    cd: [V(0.68, 0.75, 0.22), 0],
 };
+const RADIO_SPAWN = [V(-0.53, 0.75, 0.07), 0.4];
 
 export class Progression {
     constructor(game) {
@@ -106,8 +110,8 @@ function defaultControls() {
 }
 
 function portFor(game, dev) {
-    const free = game.ports.filter(p => p.type === dev.plug.type && !p.plug);
-    return free[0] || game.ports.find(p => p.type === dev.plug.type);
+    const own = game.ports.filter(p => p.type === dev.plug.type && !p.external);
+    return own.find(p => !p.plug) || own[0];
 }
 
 const PLUG_WORDS = {
@@ -142,7 +146,7 @@ function plugStep(game, id, station, extra = {}) {
         },
         exit() { for (const p of game.ports) if (p.highlight === 'hint') p.setHighlight('none'); },
         guide: () => ({
-            from: () => (dev().plug.port ? null : dev().plug.object.position.clone()),
+            from: () => (dev().plugged || dev().held ? null : dev().plug.object.position.clone()),
             to: () => { const p = portFor(game, dev()); return p ? p.worldPos().addScaledVector(p.outward(), 0.05) : null; },
         }),
         done: () => dev().plugged,
@@ -189,6 +193,8 @@ function waitStep(game, id, station, title, text, done, extra = {}) {
 function buildSteps(game, prog) {
     const D = game.devices;
     const F = game.flags;
+    const ST = () => game.storage;
+    let extraIdle = 0, lastExtra = '';
     const spawn = id => { const [p, yaw] = SPAWN[id]; D[id].spawn(p, yaw); };
 
     return [
@@ -201,7 +207,7 @@ function buildSteps(game, prog) {
                 guide: () => ({ from: () => game.itemsById.mug.object.position.clone().setY(0.87), to: () => V(0.25, 0.8, 0.29) }),
             }),
         waitStep(game, 'look', 'monitor', 'Schau dich um! 👀',
-            'Fahre mit der Maus an den <b>linken Bildschirmrand</b> (oder klicke auf <b>◀ Kartons</b>). Dort stehen drei Kartons: <b style="color:#6fdc98">EINGABE</b>, <b style="color:#7fb0f5">VERARBEITUNG</b> und <b style="color:#ffb066">AUSGABE</b>.',
+            'Fahre mit der Maus an den <b>linken Bildschirmrand</b> (oder klicke auf <b>◀ Kartons</b>). Dort stehen vier Kartons: <b style="color:#6fdc98">EINGABE</b>, <b style="color:#7fb0f5">VERARBEITUNG</b>, <b style="color:#ffb066">AUSGABE</b> und <b style="color:#5fd6d6">SPEICHER</b>.',
             () => game.rig.yaw > 0.75,
             { enter() { game.hud.pulseLookLeft(true); }, exit() { game.hud.pulseLookLeft(false); } }),
         waitStep(game, 'lookback', 'monitor', 'Genau! 📦',
@@ -242,10 +248,39 @@ function buildSteps(game, prog) {
             'Benutze deine <b>echte Tastatur</b>: Tippe <b>HALLO COMPUTER</b>. Die virtuelle Tastatur ist jetzt verbunden – schau, wie sich ihre Tasten mitbewegen!',
             () => F.typing,
             { enter() { game.hand.exitMouseMode(); game.computer.startApp('typing'); }, controls: '<b>Echte Tastatur:</b> tippen<br><b>Leertaste:</b> Leerzeichen' }),
-        infoStep(game, 'kb_eva', 'keyboard', 'Super getippt! 🎉',
-            'Jeder Tastendruck ist eine <b>EINGABE</b>. Der Computer <b>VERARBEITET</b> ihn und zeigt den Buchstaben auf dem Bildschirm an: <b>AUSGABE</b>.<br><small>Auch die Tastatur bleibt bis zum Schluss auf dem Tisch.</small>',
+        waitStep(game, 'save_try', 'keyboard', '💾 Und jetzt: speichern!',
+            'Super getippt! Damit dein Text nicht verloren geht, musst du ihn <b>speichern</b>. Drück <b>Strg + S</b> (oder einfach <b>Enter</b>) – so wie in echten Programmen.',
+            () => F.saveFailed,
+            { mood: 'happy', enter() { game.hand.exitMouseMode(); game.computer.startApp('editor'); }, controls: '<b>Strg + S</b> oder <b>Enter:</b> speichern' }),
+        waitStep(game, 'hdd_spawn', 'keyboard', '💽 Eine Festplatte!', '', () => true, { enter() { spawn('hdd'); } }),
+        plugStep(game, 'hdd', 'keyboard', {
+            title: '😮 Kein Speicher!',
+            text: 'Der Computer weiß nicht, <b>wohin</b> mit deinem Text – ihm fehlt ein <b>Speicher</b>! Da ist eine <b>Festplatte</b> aufgetaucht. Steck ihr <b style="color:#2f7cf6">blaues USB-Kabel</b> in eine <b style="color:#2f7cf6">blaue USB-Buchse</b>.<br><small>Meistens ist die Festplatte im Computer eingebaut – diese hier ist eine externe.</small>',
+            mood: 'thinking',
+        }),
+        waitStep(game, 'save_hdd', 'keyboard', '💾 Jetzt klappt es!',
+            'Drück noch einmal <b>Strg + S</b> (oder Enter). Hörst du die Festplatte <b>rattern</b>? Sie schreibt deinen Text auf ihre Scheibe.',
+            () => F.saved,
+            { enter() { if (!game.computer.app?.trySave) game.computer.startApp('editor'); }, controls: '<b>Strg + S</b> oder <b>Enter:</b> speichern' }),
+        waitStep(game, 'extra_type', 'keyboard', '✏️ Ein kleiner Test …',
+            'Gespeichert! Tippe jetzt noch <b>deinen Namen</b> dazu – aber diesmal <b>nicht speichern</b>! Du wirst gleich sehen, warum.',
+            () => F.extraTyped && extraIdle > 1.8,
+            {
+                enter() { extraIdle = 0; game.computer.app?.startExtra?.(); },
+                update(dt) {
+                    const u = ST().unsaved;
+                    if (u !== lastExtra) { lastExtra = u; extraIdle = 0; } else extraIdle += dt;
+                },
+                controls: '<b>Echte Tastatur:</b> Namen tippen<br><b>Nicht</b> speichern!',
+            }),
+        waitStep(game, 'blackout', 'keyboard', 'Uiii! 😱',
+            'Ich bin über das <b>Stromkabel</b> gestolpert! Der Computer ist einfach ausgegangen … Was wohl mit deinem Text passiert ist? Warte, er startet neu.',
+            () => F.rebooted,
+            { mood: 'sad', enter() { ST().blackout(); }, controls: 'Einen Moment …' }),
+        infoStep(game, 'hdd_eva', 'keyboard', 'Puh – gerettet! 💽',
+            '<b>HALLO COMPUTER</b> ist noch da: Es war auf der <b>Festplatte gespeichert</b>. Dein Name war nur im Arbeitsspeicher – und der vergisst ohne Strom alles.<br>Tastatur: <b>EINGABE</b> · Computer: <b>VERARBEITUNG</b> · Bildschirm: <b>AUSGABE</b> · Festplatte: <b>SPEICHER</b><br><small>Tastatur und Festplatte bleiben bis zum Schluss auf dem Tisch.</small>',
             'happy',
-            { enter() { game.hud.eva('⌨️ Tastatur', '💻 Computer', '🖥️ Bildschirm'); game.computer.startApp(null); }, exit() { game.hud.eva(null); } }),
+            { enter() { game.hud.eva('⌨️ Tastatur', '💻 Computer', '🖥️ Bildschirm', '💽 Festplatte'); }, exit() { game.hud.eva(null); game.computer.startApp(null); } }),
 
         // ---------------- Lautsprecher + Scanner
         waitStep(game, 'spk_spawn', 'scanner', '🔊 Lautsprecher!', '', () => true, { enter() { spawn('speakers'); } }),
@@ -297,11 +332,41 @@ function buildSteps(game, prog) {
         infoStep(game, 'midi_eva', 'midi', 'Du bist ein Musik-Profi! 🎵',
             'Das <b>MIDI-Keyboard</b> macht selbst keinen Ton! Es schickt nur die Information „Taste C gedrückt“: <b>EINGABE</b>. Der Computer <b>VERARBEITET</b> sie und erzeugt den Klang. Die <b>Lautsprecher</b> geben ihn aus: <b>AUSGABE</b>.',
             'happy',
-            { enter() { game.hud.eva('🎹 MIDI-Keyboard', '💻 Computer', '🔊 Lautsprecher + 🖥️'); } }),
-        sortStep(game, ['midi'], 'midi', '📦 Ab in den Karton!', 'Räum das <b>MIDI-Keyboard</b> in den richtigen Karton.'),
+            { enter() { game.hud.eva('🎹 MIDI-Keyboard', '💻 Computer', '🔊 Lautsprecher + 🖥️'); }, exit() { game.hud.eva(null); } }),
+        waitStep(game, 'usb_spawn', 'midi', '💾 Ein USB-Stick!', '', () => true, { enter() { spawn('usbstick'); } }),
+        plugStep(game, 'usbstick', 'midi', {
+            title: '💾 Ein USB-Stick!',
+            text: 'Jetzt machst du <b>dein eigenes Lied</b> – und das soll nicht verloren gehen! Steck den <b>USB-Stick</b> in eine <b style="color:#2f7cf6">blaue USB-Buchse</b> am Computer. Er hat kein Kabel: Er <b>ist</b> selbst der Stecker.',
+            mood: 'happy',
+        }),
+        waitStep(game, 'rec_use', 'midi', '● Nimm dein Lied auf!',
+            'Spiel <b>8 Töne</b> auf dem MIDI-Keyboard – ganz egal welche, es ist <b>dein Lied</b>! Dann speichere es mit <b>Enter</b> (oder Strg + S) auf dem <b>USB-Stick</b>.',
+            () => F.songSaved,
+            {
+                enter() { game.computer.startApp('record'); },
+                guide: () => ({ at: () => (F.recorded ? null : D.midi.object.position.clone().setY(0.82)) }),
+                controls: '<b>Klaviertasten</b> oder <b>C D E F G A H K:</b> spielen<br><b>Enter:</b> speichern · <b>⌫:</b> neu aufnehmen',
+            }),
+        waitStep(game, 'radio_use', 'midi', '📻 Nimm dein Lied mit!',
+            'Auf dem Tisch steht jetzt ein <b>Radio</b>. Es hat auch eine USB-Buchse! <b>Zieh den USB-Stick</b> aus dem Computer und <b>steck ihn ins Radio</b>.',
+            () => F.radio,
+            {
+                mood: 'happy',
+                enter() { const [p, yaw] = RADIO_SPAWN; ST().spawnRadio(p, yaw); },
+                guide: () => ({
+                    from: () => (D.usbstick.held || D.usbstick.plug.port?.external ? null : D.usbstick.object.position.clone()),
+                    to: () => { const rp = ST().radioPort; return rp ? rp.worldPos(new THREE.Vector3()).addScaledVector(rp.outward(new THREE.Vector3()), 0.06) : null; },
+                }),
+                controls: '<b>USB-Stick greifen:</b> herausziehen<br><b>Vor die Buchse am Radio halten</b> und loslassen',
+            }),
+        infoStep(game, 'usb_eva', 'midi', 'Dein Lied läuft! 🎶',
+            'Das Radio kannte dein Lied nicht – es liest es vom <b>USB-Stick</b>. Ein Speicher merkt sich Daten, und den Stick kannst du <b>mitnehmen</b>.<br>MIDI-Keyboard: <b>EINGABE</b> · Computer: <b>VERARBEITUNG</b> · Lautsprecher: <b>AUSGABE</b> · USB-Stick: <b>SPEICHER</b>',
+            'happy',
+            { enter() { game.hud.eva('🎹 MIDI-Keyboard', '💻 Computer', '🔊 Lautsprecher', '💾 USB-Stick'); } }),
+        sortStep(game, ['midi', 'usbstick'], 'midi', '📦 Ab in die Kartons!', 'Räum das <b>MIDI-Keyboard</b> und den <b>USB-Stick</b> in die richtigen Kartons. Für Speicher gibt es einen <b style="color:#5fd6d6">eigenen Karton</b>!'),
 
         // ---------------- Mikrofon
-        waitStep(game, 'mic_spawn', 'mic', '🎤 Ein Studiomikrofon!', '', () => true, { enter() { game.computer.startApp(null); spawn('mic'); } }),
+        waitStep(game, 'mic_spawn', 'mic', '🎤 Ein Studiomikrofon!', '', () => true, { enter() { ST().removeRadio(); game.computer.startApp(null); spawn('mic'); } }),
         plugStep(game, 'mic', 'mic', {
             text: 'Mikrofone haben am Computer eine eigene Buchse: Steck den <b style="color:#ff6fa8">rosa Stecker</b> in die <b style="color:#ff6fa8">rosa Buchse</b>!',
         }),
@@ -340,8 +405,31 @@ function buildSteps(game, prog) {
         infoStep(game, 'cam_eva', 'camera', 'Schönes Foto! 🖼️',
             'Die <b>Webcam</b> nimmt das Bild auf: <b>EINGABE</b>. Der Computer <b>VERARBEITET</b> es (zum Beispiel mit einem Filter). Bildschirm und <b>Drucker</b> geben es aus: <b>AUSGABE</b>. Du kannst das Blatt sogar hochheben!',
             'happy',
-            { enter() { game.hand.exitMouseMode(); game.hud.eva('📷 Webcam', '💻 Computer', '🖨️ Drucker + 🖥️'); } }),
-        sortStep(game, ['webcam', 'printer'], 'camera', '📦 Zwei Geräte aufräumen!', 'Sortiere die <b>Webcam</b> und den <b>Drucker</b> in die richtigen Kartons.'),
+            { enter() { game.hand.exitMouseMode(); game.hud.eva('📷 Webcam', '💻 Computer', '🖨️ Drucker + 🖥️'); }, exit() { game.hud.eva(null); } }),
+        waitStep(game, 'cd_spawn', 'camera', '💿 Eine CD!', '', () => true, { enter() { ST().burnEnabled = true; spawn('cd'); } }),
+        waitStep(game, 'cd_insert', 'camera', '💿 Leg die CD ein!',
+            'Dein Foto soll <b>für immer</b> bleiben – wir brennen es auf eine <b>CD</b>! Klicke oben am Computer auf das <b>CD-Laufwerk</b> (⏏), dann fährt die Schublade heraus. <b>Leg die CD hinein.</b>',
+            () => D.cd.inTray,
+            {
+                guide: () => ({
+                    at: () => (ST().trayOpen ? (D.cd.held ? ST().cdSpotWorld().setY(ST().cdSpotWorld().y + 0.03) : D.cd.object.position.clone()) : ST().ejectWorld()),
+                    from: () => (ST().trayReady() && !D.cd.held ? D.cd.object.position.clone() : null),
+                    to: () => ST().cdSpotWorld().setY(ST().cdSpotWorld().y + 0.02),
+                }),
+                controls: '<b>Klick aufs CD-Laufwerk:</b> Schublade auf/zu<br><b>CD greifen</b> und über der Schublade loslassen',
+            }),
+        waitStep(game, 'cd_burn', 'camera', '🔥 Brenn die CD!',
+            'Die CD ist drin! Klicke in der Foto-App auf <b>„Auf CD brennen“</b> (mit der Maus) oder drücke <b>B</b> auf der Tastatur. Ein <b>Laser</b> brennt dein Foto in die CD.',
+            () => F.burned,
+            {
+                enter() { if (!game.computer.app?.burn) game.computer.startApp('camera'); },
+                controls: '<b>B</b> oder <b>Maus → „Auf CD brennen“</b>',
+            }),
+        infoStep(game, 'cd_eva', 'camera', 'Für immer gespeichert! 💿',
+            'Schau: Dein Foto ist jetzt <b>auf der CD</b>! Webcam: <b>EINGABE</b> · Computer: <b>VERARBEITUNG</b> · Bildschirm und Drucker: <b>AUSGABE</b> · CD: <b>SPEICHER</b>.<br><small>Tipp: Wirf die CD mal wie ein Frisbee 🥏</small>',
+            'happy',
+            { enter() { game.hand.exitMouseMode(); game.hud.eva('📷 Webcam', '💻 Computer', '🖨️ Drucker + 🖥️', '💿 CD'); } }),
+        sortStep(game, ['webcam', 'printer', 'cd'], 'camera', '📦 Drei Sachen aufräumen!', 'Sortiere die <b>Webcam</b>, den <b>Drucker</b> und die <b>CD</b> in die richtigen Kartons.'),
 
         // ---------------- Touchscreen
         waitStep(game, 'touch_spawn', 'touch', '📱 Ein Touchscreen!', '', () => true, { enter() { game.computer.startApp(null); spawn('touch'); } }),
@@ -364,19 +452,19 @@ function buildSteps(game, prog) {
 
         // ---------------- Finale
         infoStep(game, 'final_intro', 'final', 'Feierabend! 🧹',
-            'Du hast alle Geräte ausprobiert. Jetzt räumen wir <b>alles</b> auf: <b>Maus</b>, <b>Tastatur</b>, <b>Lautsprecher</b>, <b>Bildschirm</b> und sogar den <b>Computer</b> selbst. Wohin gehört der Computer wohl?',
+            'Du hast alle Geräte ausprobiert. Jetzt räumen wir <b>alles</b> auf: <b>Maus</b>, <b>Tastatur</b>, <b>Lautsprecher</b>, <b>Bildschirm</b>, <b>Festplatte</b> und sogar den <b>Computer</b> selbst. Wohin gehört der Computer wohl?',
             'happy',
             { enter() { game.hand.exitMouseMode(); game.touchApp.on = false; } }),
-        sortStep(game, ['mouse', 'keyboard', 'speakers', 'monitor', 'tower'], 'final', '📦 Großes Aufräumen!',
-            'Sortiere <b>Maus, Tastatur, Lautsprecher, Bildschirm</b> und den <b>Computer</b> in die Kartons. Tipp: Der Computer ist das Gehirn – er <b>verarbeitet</b>!'),
+        sortStep(game, ['mouse', 'keyboard', 'speakers', 'monitor', 'hdd', 'tower'], 'final', '📦 Großes Aufräumen!',
+            'Sortiere <b>Maus, Tastatur, Lautsprecher, Bildschirm, Festplatte</b> und den <b>Computer</b> in die Kartons. Tipp: Der Computer ist das Gehirn – er <b>verarbeitet</b>!'),
         {
             id: 'end', station: 'final', title: 'Alles aufgeräumt! 🏆', mood: 'happy',
-            text: 'Du kennst jetzt das <b>EVA-Prinzip</b>: Eingabe → Verarbeitung → Ausgabe!',
+            text: 'Du kennst jetzt das <b>EVAS-Prinzip</b>: Eingabe → Verarbeitung → Ausgabe – und der <b>Speicher</b> merkt sich alles!',
             enter() {
                 game.audio.success();
                 prog.doneStations.push('final');
                 game.hud.station(null, prog.doneStations);
-                for (let i = 0; i < 6; i++) setTimeout(() => game.guide.burst(V(-1.25 + Math.random() * 0.2, 0.9, -0.4 + Math.random() * 1.0), undefined, 30, 1.4), i * 250);
+                for (let i = 0; i < 8; i++) setTimeout(() => { const b = game.boxes[i % game.boxes.length]; game.guide.burst(b.group.position.clone().setY(0.85), [b.hex, 0xffd43b, 0xffffff], 30, 1.4); }, i * 250);
                 setTimeout(() => game.hud.end(game.boxes), 1600);
             },
             done: () => false,
