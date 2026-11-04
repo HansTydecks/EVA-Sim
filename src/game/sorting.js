@@ -19,6 +19,7 @@ export class Sorter {
 
     update(dt, time) {
         const g = this.game;
+        if (g.destroy?.active) return;
         const things = [...Object.values(g.devices), ...g.items];
         for (const it of things) {
             if (it.held || it.sorted || it.visible === false || it.isFixed) continue;

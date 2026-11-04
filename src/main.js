@@ -17,6 +17,7 @@ import { Hud } from './ui/hud.js';
 import { Sorter } from './game/sorting.js';
 import { Progression } from './game/progression.js';
 import { Storage } from './game/storage.js';
+import { Destruction } from './game/destruction.js';
 
 // ------------------------------------------------------------ Grundgerüst
 const container = document.getElementById('app');
@@ -150,6 +151,7 @@ game.raycastRoots = () => {
         if (d.plug && !d.plug.hidden && !d.plug.isStick) r.push(d.plug.object);
     }
     for (const it of game.items) r.push(it.object);
+    if (game.destroy?.active) r.push(...game.destroy.raycastRoots());
     return r;
 };
 
@@ -157,6 +159,7 @@ game.hand = new HandController(game);
 game.sorter = new Sorter(game, game.boxes);
 game.progression = new Progression(game);
 game.storage = new Storage(game);
+game.destroy = new Destruction(game);
 
 // ------------------------------------------------------------ Geräte-Verhalten
 D.mouse.clickHandler = () => {
@@ -383,6 +386,10 @@ window.addEventListener('keydown', e => {
     game.audio.init();
     game.activity();
     if (k === 'Escape') { game.hand.exitMouseMode(); return; }
+    if (game.destroy.active) {
+        const tools = { 1: 'hammer', 2: 'throw', 3: 'bomb', 4: 'gravity', 5: 'confetti' };
+        if (tools[k]) { game.destroy.setTool(tools[k]); return; }
+    }
     const app = game.computer.app;
     // Mikrofon-Simulation
     if (app?.setSinging && D.mic.plugged) {
@@ -449,18 +456,23 @@ game.on('respawned', it => {
 let lastT = performance.now();
 function loop() {
     const now = performance.now();
-    const dt = Math.min((now - lastT) / 1000, 1 / 20);
+    const rawDt = Math.min((now - lastT) / 1000, 1 / 20);
     lastT = now;
+    const boom = game.destroy.active;
+    const dt = boom ? rawDt * game.destroy.timeScale : rawDt;   // Zeitlupe im Zerstörmodus
     game.time += dt;
     const t = game.time;
 
     game.physics.step(dt);
-    game.rig.update(dt);
-    game.hand.update(dt, t);
+    game.rig.update(rawDt);
+    if (boom) camera.position.add(game.destroy.shakeOffset());
+    game.hand.update(rawDt, t);
+    game.destroy.afterHand(rawDt);
+    game.destroy.update(rawDt);
     for (const d of Object.values(D)) d.update(dt);
     for (const it of game.items) it.update(dt);
     game.sorter.update(dt, t);
-    game.progression.update(dt);
+    if (!boom) game.progression.update(dt);
     game.computer.update(dt);
     game.touchApp.update(dt);
     if (game.touchApp.on) touchTex.needsUpdate = true;
@@ -530,7 +542,8 @@ function loop() {
     }
 
     updateWebcam();
-    renderer.render(scene, camera);
+    if (boom) game.destroy.render();
+    else renderer.render(scene, camera);
     requestAnimationFrame(loop);
 }
 
@@ -544,7 +557,15 @@ startBtn.addEventListener('click', () => {
     game.hand.enabled = true;
     game.progression.start();
 });
-document.getElementById('againBtn').addEventListener('click', () => location.reload());
+document.getElementById('againBtn').addEventListener('click', () => {
+    const q = new URLSearchParams(location.search); q.delete('boom');
+    location.search = q.toString();
+});
+document.getElementById('destroyBtn').addEventListener('click', () => game.destroy.start());
+for (const b of document.querySelectorAll('#destroyBar [data-tool]')) b.addEventListener('click', e => { e.stopPropagation(); game.destroy.setTool(b.dataset.tool); });
+// ?boom: direkt in den Zerstörmodus (nach dem Start-Knopf), z. B. über „Alles neu“
+const BOOM = new URLSearchParams(location.search).has('boom');
+if (BOOM) startBtn.addEventListener('click', () => setTimeout(() => game.destroy.start({ quick: true }), 300));
 
 // Debug-/Test-Hilfen (für automatisierte Tests und Lehrkräfte)
 Object.assign(window.__eva, {
@@ -570,6 +591,7 @@ Object.assign(window.__eva, {
         d.setPosition(b.group.position.clone().setY(b.group.position.y + 0.12));
     },
     flags: game.flags,
+    boom() { game.destroy.start({ quick: true }); },
     spillMug() { game.fun.spillMug(); },
     breakCactus() { game.fun.breakCactus(); },
     dropToFloor(id) {

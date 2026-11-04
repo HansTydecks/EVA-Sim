@@ -32,6 +32,7 @@ export class Hud {
             c.textContent = s.label;
             this.el.progress.appendChild(c);
             this.chips[s.id] = c;
+            c.addEventListener('click', () => game.progression?.chipClicked(s.id));
         }
         this.toastT = null;
         this.nextCb = null;
@@ -66,6 +67,7 @@ export class Hud {
         for (const s of STATIONS) {
             const c = this.chips[s.id];
             c.classList.toggle('active', s.id === id);
+            c.title = s.id === id ? '↺ Klick: Gegenstände dieser Station zurück auf den Tisch' : '';
             c.classList.toggle('done', done.includes(s.id));
         }
     }

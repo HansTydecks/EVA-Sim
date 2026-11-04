@@ -52,6 +52,22 @@
             </div>
         </div>
 
+        <!-- Zerstörmodus: Werkzeuge und Chaos-Anzeige -->
+        <div id="destroyBar" class="destroy-bar hidden">
+            <button data-tool="hammer" title="Hammer (Taste 1)"><span>🔨</span>Hammer<i>1</i></button>
+            <button data-tool="throw" title="Superkraft-Werfen (Taste 2)"><span>✋</span>Werfen<i>2</i></button>
+            <button data-tool="bomb" title="Bombe (Taste 3)"><span>💣</span>Bombe<i>3</i></button>
+            <button data-tool="gravity" title="Schwerelos an/aus (Taste 4)"><span>🪐</span>Schwerelos<i>4</i></button>
+            <button data-tool="confetti" title="Konfetti-Kanone (Taste 5)"><span>🎉</span>Konfetti<i>5</i></button>
+            <button data-tool="reset" class="reset" title="Raum neu aufbauen"><span>🧹</span>Alles neu</button>
+        </div>
+        <div id="chaosBox" class="chaos-box hidden">
+            <div class="chaos-label">Chaos</div>
+            <div class="chaos-bar"><div id="chaosFill"></div></div>
+            <div id="chaosPct" class="chaos-pct">0 %</div>
+            <div id="comboText" class="combo"></div>
+        </div>
+
         <!-- Steuerungshinweis -->
         <div id="controls" class="controls-hint"></div>
     </div>
@@ -97,7 +113,11 @@
             <p class="small">Eingabegeräte geben dem Computer Informationen. Der Computer verarbeitet sie.
                Ausgabegeräte zeigen oder spielen das Ergebnis. Speicher merken sich Daten – auch ohne Strom.
                Der Touchscreen kann sogar Eingabe und Ausgabe!</p>
-            <button id="againBtn" class="start-btn">Nochmal spielen</button>
+            <div class="end-actions">
+                <button id="destroyBtn" class="start-btn destroy-btn">🔨 Zerstörmodus!</button>
+                <button id="againBtn" class="start-btn">Nochmal spielen</button>
+            </div>
+            <p class="small">Im Zerstörmodus darfst du alles im Raum kaputt machen – nur zum Spaß.</p>
         </div>
     </div>
 

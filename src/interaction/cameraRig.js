@@ -48,7 +48,7 @@ export class CameraRig {
         const f = this.focus;
         this.pos.set(this.base.x, this.base.y - f * 0.12, this.base.z - f * 0.32);
         this.camera.position.copy(this.pos);
-        const pitch = this.pitch + f * 0.3 - Math.max(0, this.yaw) * 0.12;
+        const pitch = this.pitch + f * 0.3 - Math.max(0, this.yaw) * 0.04;
         const dir = new THREE.Vector3(-Math.sin(this.yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(this.yaw) * Math.cos(pitch));
         this.camera.lookAt(this.pos.clone().add(dir));
 

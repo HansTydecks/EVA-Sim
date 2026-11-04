@@ -91,7 +91,8 @@ export class Storage {
             cd.nearTray = false;
             if (!this.trayReady()) return;
             const spot = this.cdSpotWorld(_v);
-            if (cd.object.position.distanceTo(spot) < 0.11) {
+            const onDrive = !!this.game.hand.hoverHit?.object?.userData?.drive;
+            if (onDrive || cd.object.position.distanceTo(spot) < 0.13) {
                 cd.nearTray = true;
                 cd.object.position.lerp(spot.setY(spot.y + 0.012), 0.7);
                 this.tower.object.getWorldQuaternion(_q);
