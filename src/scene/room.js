@@ -2,24 +2,28 @@ import * as THREE from 'three';
 import { mat, box, rbox, cyl, canvasTexture } from './models.js';
 
 export const DESK = { x0: -0.72, x1: 0.95, z0: -0.45, z1: 0.35, top: 0.75 };
-// Die Kartons stehen im Halbkreis um den Sitzplatz (links vom Tisch), damit alle vier gleichzeitig zu sehen sind.
+// Die Kartons stehen links vom Tisch in zwei Reihen: vorne EINGABE + VERARBEITUNG, dahinter erhöht AUSGABE + SPEICHER.
 const SEAT = { x: 0, z: 0.86 };
-const ARC_R = 1.4;
-const onArc = (a, y) => new THREE.Vector3(SEAT.x - Math.sin(a) * ARC_R, y, SEAT.z - Math.cos(a) * ARC_R);
-export const BENCH = { cx: -1.2, cz: 0.12, w: 0.56, d: 1.55, top: 0.42 };
+const ROW_YAW = 1.5;                     // Blickrichtung zu den Kartons
+const ROWS = { front: { r: 1.22, top: 0.4 }, back: { r: 1.66, top: 0.7 } };
+const ROW_DIR = new THREE.Vector3(-Math.sin(ROW_YAW), 0, -Math.cos(ROW_YAW));
+const ROW_SIDE = new THREE.Vector3(Math.cos(ROW_YAW), 0, -Math.sin(ROW_YAW)); // im Bild nach rechts
+const inRow = (row, side) => new THREE.Vector3(SEAT.x, ROWS[row].top, SEAT.z).addScaledVector(ROW_DIR, ROWS[row].r).addScaledVector(ROW_SIDE, side * 0.255);
+export const BENCH = { top: 0.42 };
 export const BOX_DEFS = [
-    { cat: 'E', name: 'EINGABE', color: '#2fae5f', hex: 0x2fae5f, pos: onArc(1.96, BENCH.top), sub: 'Informationen hinein' },
-    { cat: 'V', name: 'VERARBEITUNG', color: '#3b7ddd', hex: 0x3b7ddd, pos: onArc(1.68, BENCH.top), sub: 'Der Computer rechnet' },
-    { cat: 'A', name: 'AUSGABE', color: '#f08a24', hex: 0xf08a24, pos: onArc(1.4, BENCH.top), sub: 'Ergebnis heraus' },
-    { cat: 'S', name: 'SPEICHER', color: '#14a3a3', hex: 0x14a3a3, pos: onArc(1.12, BENCH.top), sub: 'Merkt sich Daten' },
+    { cat: 'E', name: 'EINGABE', color: '#2fae5f', hex: 0x2fae5f, pos: inRow('front', -1), row: 'front', yaw: ROW_YAW, sub: 'Informationen hinein' },
+    { cat: 'V', name: 'VERARBEITUNG', color: '#3b7ddd', hex: 0x3b7ddd, pos: inRow('front', 1), row: 'front', yaw: ROW_YAW, sub: 'Der Computer rechnet' },
+    { cat: 'A', name: 'AUSGABE', color: '#f08a24', hex: 0xf08a24, pos: inRow('back', -1), row: 'back', yaw: ROW_YAW, sub: 'Ergebnis heraus' },
+    { cat: 'S', name: 'SPEICHER', color: '#14a3a3', hex: 0x14a3a3, pos: inRow('back', 1), row: 'back', yaw: ROW_YAW, sub: 'Merkt sich Daten' },
 ];
-export const BOX_SIZE = { w: 0.37, h: 0.28, d: 0.34, t: 0.015 };
+export const BOX_SIZE = { w: 0.42, h: 0.28, d: 0.36, t: 0.015 };
 
 export function buildRoom(game) {
     const { scene, physics } = game;
     const staticGroup = new THREE.Group();
     staticGroup.name = 'room';
     scene.add(staticGroup);
+    const decor = [];   // lose Deko-Teile, die im Zerstörmodus herunterfallen dürfen
 
     // ---------- Licht ----------
     const hemi = new THREE.HemisphereLight(0xfff4ea, 0x5a4050, 1.25);
@@ -86,9 +90,11 @@ export function buildRoom(game) {
     const door = rbox(0.86, 2.02, 0.04, 0xc9a06b, { r: 0.01 });
     door.position.set(-1.45, 1.01, 2.19);
     staticGroup.add(door);
+    decor.push(door);
     const knob = new THREE.Mesh(new THREE.SphereGeometry(0.03, 14, 10), mat(0xd8dbe2, { metalness: 0.8, roughness: 0.3 }));
     knob.position.set(-1.12, 1.0, 2.15);
     staticGroup.add(knob);
+    decor.push(knob);
     physics.addStaticBox({ x: 5, y: 2, z: 0.05 }, { x: 0, y: 2, z: -1.15 });
     physics.addStaticBox({ x: 0.05, y: 2, z: 5 }, { x: -2.25, y: 2, z: 0 });
     physics.addStaticBox({ x: 0.05, y: 2, z: 5 }, { x: 2.45, y: 2, z: 0 });
@@ -115,6 +121,7 @@ export function buildRoom(game) {
     glass.position.set(wcx, wcy, -1.1);
     glass.userData.noRaycast = true;
     staticGroup.add(glass);
+    const windowInfo = { glass, x0: WIN.x0, x1: WIN.x1, y0: WIN.y0, y1: WIN.y1, z: -1.1 };
     // Fensterbank
     const sill = rbox(ww + 0.2, 0.03, 0.16, 0xf7f2ee, { r: 0.006 });
     sill.position.set(wcx, WIN.y0 - 0.015, -1.04);
@@ -127,6 +134,7 @@ export function buildRoom(game) {
         bk.position.set(-0.32 + i * 0.038, WIN.y0 + bk.geometry.parameters.height / 2, -1.04);
         if (i === 4) { bk.rotation.z = -0.35; bk.position.x += 0.03; }
         staticGroup.add(bk);
+        decor.push(bk);
     });
     const globe = new THREE.Mesh(new THREE.SphereGeometry(0.06, 20, 14), new THREE.MeshStandardMaterial({
         map: canvasTexture(256, 128, (ctx, w, h) => {
@@ -140,17 +148,21 @@ export function buildRoom(game) {
     globe.position.set(1.55, WIN.y0 + 0.11, -1.04);
     globe.rotation.z = 0.4;
     staticGroup.add(globe);
+    decor.push(globe);
     const gstand = cyl(0.03, 0.035, 0.04, 0x8a6d4f, 14);
     gstand.position.set(1.55, WIN.y0 + 0.02, -1.04);
     staticGroup.add(gstand);
+    decor.push(gstand);
     const cup = cyl(0.03, 0.026, 0.09, 0x4a1f3a, 16);
     cup.position.set(0.95, WIN.y0 + 0.045, -1.05);
     staticGroup.add(cup);
+    decor.push(cup);
     [0xff6b6b, 0x4dabf7, 0xffd43b, 0x69db7c].forEach((c, i) => {
         const pen = cyl(0.004, 0.004, 0.13, c, 6);
         pen.position.set(0.95 + (i - 1.5) * 0.012, WIN.y0 + 0.1, -1.05 + (i % 2) * 0.01);
         pen.rotation.z = (i - 1.5) * 0.12;
         staticGroup.add(pen);
+        decor.push(pen);
     });
     // Heizkörper unter dem Fenster
     const rad = new THREE.Group();
@@ -161,6 +173,7 @@ export function buildRoom(game) {
     }
     rad.position.set(wcx - 0.5, 0.42, -1.06);
     staticGroup.add(rad);
+    decor.push(rad);
 
     // Wanduhr (zeigt die echte Uhrzeit)
     const clock = new THREE.Group();
@@ -192,6 +205,7 @@ export function buildRoom(game) {
     const secHand = mkHand(0.095, 0.002, 0xe03131, 0.012);
     clock.position.set(-0.8, 1.2, -1.095);
     staticGroup.add(clock);
+    decor.push(clock);
     const updateClock = () => {
         const d = new Date();
         const sec = d.getSeconds() + d.getMilliseconds() / 1000;
@@ -226,6 +240,7 @@ export function buildRoom(game) {
     }));
     poster.position.set(-1.5, 1.12, -1.095);
     staticGroup.add(poster);
+    decor.push(poster);
 
     // Schild über den Kartons
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.24), new THREE.MeshStandardMaterial({
@@ -239,8 +254,9 @@ export function buildRoom(game) {
         }),
     }));
     sign.rotation.y = Math.PI / 2;
-    sign.position.set(-2.19, 1.35, 0.08);
+    sign.position.set(-2.19, 1.16, 0.74);
     staticGroup.add(sign);
+    decor.push(sign);
 
     // ---------- Schreibtisch ----------
     const deskW = DESK.x1 - DESK.x0, deskD = DESK.z1 - DESK.z0;
@@ -249,33 +265,39 @@ export function buildRoom(game) {
     top.position.set(deskCx, DESK.top - 0.02, deskCz);
     top.userData.surface = true;
     staticGroup.add(top);
-    physics.addStaticBox({ x: deskW / 2, y: 0.02, z: deskD / 2 }, { x: deskCx, y: DESK.top - 0.02, z: deskCz });
+    // dicker Kollider (nach unten), damit dünne Dinge wie USB-Stick und CD nicht durch die Platte rutschen
+    const deskLegs = [];
+    const deskBody = physics.addStaticBox({ x: deskW / 2, y: 0.1, z: deskD / 2 }, { x: deskCx, y: DESK.top - 0.1, z: deskCz });
     for (const [x, z] of [[DESK.x0 + 0.05, DESK.z0 + 0.05], [DESK.x1 - 0.05, DESK.z0 + 0.05], [DESK.x0 + 0.05, DESK.z1 - 0.05], [DESK.x1 - 0.05, DESK.z1 - 0.05]]) {
         const leg = box(0.045, DESK.top - 0.04, 0.045, 0xa8a8b4, { metalness: 0.5, roughness: 0.4 });
         leg.position.set(x, (DESK.top - 0.04) / 2, z);
         staticGroup.add(leg);
+        deskLegs.push(leg);
     }
     // Mauspad
     const pad = rbox(0.26, 0.004, 0.21, 0x4a1f3a, { r: 0.002 });
     pad.position.set(0.4, DESK.top + 0.002, 0.13);
     staticGroup.add(pad);
+    const desk = { top, legs: deskLegs, pad, body: deskBody, half: { x: deskW / 2, y: 0.02, z: deskD / 2 } };
     game.mousePad = { center: new THREE.Vector3(0.4, DESK.top + 0.004, 0.13), hx: 0.1, hz: 0.075 };
 
-    // ---------- Bänkchen für die Kartons (eins pro Karton, zum Sitzplatz gedreht) ----------
-    for (const def of BOX_DEFS) {
-        const yaw = Math.atan2(game.cameraBase.x - def.pos.x, game.cameraBase.z - def.pos.z);
-        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0));
-        const bw = BOX_SIZE.w + 0.08, bd = BOX_SIZE.d + 0.1;
+    // ---------- Bänke für die Kartons (vordere Reihe niedrig, hintere erhöht) ----------
+    const benches = [];
+    for (const [row, rd] of Object.entries(ROWS)) {
+        const c = new THREE.Vector3(SEAT.x, 0, SEAT.z).addScaledVector(ROW_DIR, rd.r);
+        const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ROW_YAW);
+        const bw = 2 * 0.255 + BOX_SIZE.w + 0.1, bd = BOX_SIZE.d + 0.12;
         const top = rbox(bw, 0.04, bd, 0xc3a37f, { r: 0.01 });
-        top.position.set(def.pos.x, BENCH.top - 0.02, def.pos.z);
+        top.position.set(c.x, rd.top - 0.02, c.z);
         top.quaternion.copy(q);
         staticGroup.add(top);
-        physics.addStaticBox({ x: bw / 2, y: 0.02, z: bd / 2 }, { x: def.pos.x, y: BENCH.top - 0.02, z: def.pos.z }, q);
-        for (const dx of [-1, 1]) for (const dz of [-1, 1]) {
-            const leg = box(0.035, BENCH.top - 0.04, 0.035, 0x8a6d4f);
-            leg.position.set(dx * (bw / 2 - 0.04), -(BENCH.top - 0.04) / 2 - 0.02, dz * (bd / 2 - 0.04));
+        const body = physics.addStaticBox({ x: bw / 2, y: 0.05, z: bd / 2 }, { x: c.x, y: rd.top - 0.05, z: c.z }, q);
+        for (const dx of [-1, 0, 1]) for (const dz of [-1, 1]) {
+            const leg = box(0.04, rd.top - 0.04, 0.04, 0x8a6d4f);
+            leg.position.set(dx * (bw / 2 - 0.05), -(rd.top - 0.04) / 2 - 0.02, dz * (bd / 2 - 0.05));
             top.add(leg);
         }
+        benches.push({ mesh: top, body, half: { x: bw / 2, y: 0.02, z: bd / 2 } });
     }
 
     // ---------- Kartons ----------
@@ -283,7 +305,7 @@ export function buildRoom(game) {
     const boxes = BOX_DEFS.map(def => buildCardboardBox(game, staticGroup, def, camPos));
 
     const lights = [hemi, sun, fill].map(l => ({ light: l, base: l.intensity }));
-    return { staticGroup, boxes, sun, lights, update: updateClock };
+    return { staticGroup, boxes, sun, lights, decor, desk, windowInfo, benches, update: updateClock };
 }
 
 function buildCardboardBox(game, parent, def, camPos) {
@@ -292,7 +314,7 @@ function buildCardboardBox(game, parent, def, camPos) {
     g.position.copy(def.pos);
     // zur Kamera drehen (nur um y)
     const dir = new THREE.Vector3(camPos.x - def.pos.x, 0, camPos.z - def.pos.z).normalize();
-    g.rotation.y = Math.atan2(dir.x, dir.z);
+    g.rotation.y = def.yaw ?? Math.atan2(dir.x, dir.z);
     parent.add(g);
 
     const card = mat(0xc9a06b, { roughness: 0.9 });
@@ -315,7 +337,8 @@ function buildCardboardBox(game, parent, def, camPos) {
     const flapMat = mat(0xd4ad78, { roughness: 0.9, side: THREE.DoubleSide });
     // Hintere und seitliche Laschen stehen schräg nach oben (vorne offen, damit das Etikett sichtbar bleibt)
     const flapDefs = [
-        { size: [w, d * 0.42], pos: [0, h, -d / 2], axis: 'x', angle: 1.05, dir: [0, -1] },
+        // vordere Reihe: hintere Lasche hängt nach unten, damit man die Etiketten dahinter lesen kann
+        { size: [w, d * 0.42], pos: [0, h, -d / 2], axis: 'x', angle: def.row === 'front' ? -0.35 : 1.05, dir: [0, -1] },
         { size: [w * 0.42, d], pos: [w / 2, h, 0], axis: 'z', angle: 1.05, dir: [1, 0] },
         { size: [w * 0.42, d], pos: [-w / 2, h, 0], axis: 'z', angle: -1.05, dir: [-1, 0] },
     ];
@@ -346,12 +369,12 @@ function buildCardboardBox(game, parent, def, camPos) {
 
     g.updateMatrixWorld(true);
     const q = g.quaternion;
-    game.physics.addStaticCompound(parts, def.pos, q);
+    const body = game.physics.addStaticCompound(parts, def.pos, q);
 
     const boxObj = {
         ...def,
         group: g,
-        label, labelCanvas, labelTex, glow,
+        label, labelCanvas, labelTex, glow, body, parts,
         contents: [],
         glowT: 0,
         drawLabel() {

@@ -99,6 +99,8 @@ export class HandController {
             return;
         }
         if (e.button !== 0) return;
+        // Zerstörmodus: Hammer, Bombe, Konfetti statt Greifen
+        if (this.game.destroy?.active && this.game.destroy.onDown(this.hoverHit)) return;
         const it = this.hovered;
         if (!it) return;
         if (it.click && it.click(this.hoverHit)) {
@@ -143,8 +145,9 @@ export class HandController {
         const a = h[0], b = h[h.length - 1];
         const dt = Math.max(0.016, b.t - a.t);
         const v = b.p.clone().sub(a.p).divideScalar(dt);
-        if (v.length() > 3.5) v.setLength(3.5);
-        return v.multiplyScalar(0.85);
+        const k = this.game.destroy?.throwFactor?.() || 1;
+        if (v.length() > 3.5 * k) v.setLength(3.5 * k);
+        return v.multiplyScalar(0.85 * k);
     }
 
     enterMouseMode() {

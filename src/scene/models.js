@@ -924,6 +924,75 @@ export function makeRadio() {
     return g;
 }
 
+// ---------------- Zerstörmodus: Hammer und Bombe ----------------
+// Hammer: Ursprung = Griffende, Stiel entlang +y, Kopf quer (entlang z), Schlagfläche bei +z.
+export function makeHammer() {
+    const g = new THREE.Group();
+    const L = 0.3;
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.014, L, 14), mat(0xb07a45, { roughness: 0.7 }));
+    handle.position.y = L / 2;
+    g.add(handle);
+    const gripMat = mat(0xd67c9c, { roughness: 0.8 });
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.1, 14), gripMat);
+    grip.position.y = 0.055;
+    g.add(grip);
+    for (const y of [0.02, 0.055, 0.09]) {
+        const r = new THREE.Mesh(new THREE.TorusGeometry(0.0165, 0.002, 6, 16), mat(0xb45a7c));
+        r.rotation.x = Math.PI / 2; r.position.y = y; g.add(r);
+    }
+    const metal = mat(0xb8bfcc, { metalness: 0.85, roughness: 0.28 });
+    const head = new THREE.Mesh(new RoundedBoxGeometry(0.05, 0.05, 0.13, 3, 0.01), metal);
+    head.position.set(0, L, 0);
+    g.add(head);
+    const face = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 20), metal);
+    face.rotation.x = Math.PI / 2;
+    face.position.set(0, L, 0.07);
+    g.add(face);
+    // Klauen auf der Rückseite
+    for (const sx of [-1, 1]) {
+        const claw = new THREE.Mesh(new THREE.ConeGeometry(0.009, 0.05, 8), metal);
+        claw.rotation.x = -Math.PI / 2 - 0.35;
+        claw.position.set(sx * 0.011, L + 0.006, -0.085);
+        g.add(claw);
+    }
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.052, 0.018), mat(0xffd43b, { metalness: 0.3, roughness: 0.4 }));
+    band.position.set(0, L, 0.02);
+    g.add(band);
+    g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.userData.noRaycast = true; } });
+    g.userData = { length: L, faceOffset: 0.08 };
+    return g;
+}
+
+export function makeBomb() {
+    const g = new THREE.Group();
+    const R = 0.055;
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(R, 28, 18), mat(0x23262e, { metalness: 0.3, roughness: 0.35 }));
+    ball.position.y = R;
+    ball.castShadow = true;
+    g.add(ball);
+    const shine = new THREE.Mesh(new THREE.SphereGeometry(R * 0.25, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }));
+    shine.position.set(-R * 0.45, R * 1.45, R * 0.45);
+    g.add(shine);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.02, 14), mat(0x8a90a0, { metalness: 0.7, roughness: 0.3 }));
+    cap.position.y = R * 2 + 0.004;
+    g.add(cap);
+    const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, R * 2 + 0.012, 0), new THREE.Vector3(0.012, R * 2 + 0.035, 0.004),
+        new THREE.Vector3(0.03, R * 2 + 0.045, 0.01), new THREE.Vector3(0.045, R * 2 + 0.04, 0.012),
+    ]);
+    const fuse = new THREE.Mesh(new THREE.TubeGeometry(curve, 12, 0.003, 6), mat(0xd2b48c));
+    g.add(fuse);
+    const spark = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 2.5, 0.6), toneMapped: false }));
+    spark.position.copy(curve.getPoint(1));
+    g.add(spark);
+    const lbl = labelPlane(0.05, 0.03, 'BUMM', { fg: '#ffd43b', font: 'bold 70px Segoe UI, sans-serif' });
+    lbl.position.set(0, R * 1.05, R * 0.99);
+    g.add(lbl);
+    g.traverse(o => { if (o.isMesh) o.userData.noRaycast = true; });
+    g.userData = { size: new THREE.Vector3(R * 2, R * 2, R * 2), spark, fuse: curve };
+    return g;
+}
+
 // ---------------- Hand (Handschuh) ----------------
 // Lokales Koordinatensystem: Finger zeigen nach -z, Handrücken nach +y, rechte Hand (Daumen bei -x).
 // Verjüngtes Fingerglied von 0 bis -len entlang z; beide Enden sind Halbkugeln, die Basis-Kugel bildet das Gelenk.
