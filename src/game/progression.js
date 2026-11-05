@@ -17,8 +17,13 @@ export const SPAWN = {
     printer: [V(-0.5, 0.75, -0.1), 0.2],
     touch: [V(-0.44, 0.75, -0.02), 0.35],
     hdd: [V(0.4, 0.75, -0.13), -0.35],
-    usbstick: [V(0.3, 0.75, 0.27), 0.9],
-    cd: [V(0.68, 0.75, 0.22), 0],
+    usbstick: [V(0.24, 0.75, 0.0), 0.9],
+    cd: [V(0.62, 0.75, 0.15), 0],
+};
+// Welche Geräte gehören zu welcher Station (für das Zurücksetzen per Chip)
+const STATION_DEVICES = {
+    monitor: ['monitor'], mouse: ['mouse'], keyboard: ['keyboard', 'hdd', 'mouse'], scanner: ['speakers', 'scanner'],
+    midi: ['midi', 'usbstick', 'speakers'], mic: ['mic'], camera: ['webcam', 'printer', 'cd'], touch: ['touch'],
 };
 const RADIO_SPAWN = [V(-0.53, 0.75, 0.07), 0.4];
 
@@ -58,6 +63,43 @@ export class Progression {
         g.hud.station(s.station, this.doneStations);
         g.hud.pulseLookLeft(!!s.sort);
         g.hud.controls(s.controls || defaultControls());
+    }
+
+    // Klick auf einen Stations-Chip oben: Gegenstände der aktuellen Station zurück auf ihren Platz
+    chipClicked(id) {
+        const g = this.game;
+        if (!this.step || id !== this.step.station) {
+            g.hud.toast('↺ Nur die aktuelle Station kann zurückgesetzt werden', '', 2);
+            return;
+        }
+        this.resetStation(id);
+    }
+
+    resetStation(id) {
+        const g = this.game;
+        const D = g.devices;
+        const ids = id === 'final' ? Object.keys(D) : (STATION_DEVICES[id] || []);
+        const things = ids.map(i => D[i]).filter(Boolean);
+        for (const k of ['mug', 'cactus', 'duck', 'radio', 'paper']) if (g.itemsById[k]) things.push(g.itemsById[k]);
+        if (id === 'scanner') things.push(...g.products);
+        let n = 0;
+        for (const it of things) {
+            if (!it || it.sorted || it.visible === false || it.isFixed || it.locked) continue;
+            if (it.plug?.isStick && it.plug.port) continue;   // steckender USB-Stick bleibt stecken
+            if (it.inTray) continue;                           // CD im Laufwerk bleibt drin
+            if (g.hand.held === it) { g.hand.held = null; it.release(new THREE.Vector3()); }
+            it.respawnToDesk(true);
+            n++;
+        }
+        // lose Stecker wieder neben ihr Gerät legen
+        for (const d of things) {
+            if (d?.plug && !d.plug.isStick && !d.plug.hidden && !d.plug.port && !d.sorted) {
+                if (g.hand.held === d.plug) { g.hand.held = null; d.plug.held = false; }
+                d.placePlugNear(d.object.position);
+            }
+        }
+        g.hud.toast(n ? '↺ Gegenstände zurück auf dem Tisch' : '↺ Alles ist schon an seinem Platz', n ? 'good' : '', 1.8);
+        this.activity();
     }
 
     skipTo(id) {

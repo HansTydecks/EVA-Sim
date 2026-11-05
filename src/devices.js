@@ -3,6 +3,8 @@ import * as M from './scene/models.js';
 import { Plug, StickPlug, PORT_TYPES } from './interaction/cables.js';
 
 const _e = new THREE.Euler();
+// sicherer Platz in der Tischmitte (hinter der Tastatur), falls etwas immer wieder herunterfällt
+const SAFE_SPOT = new THREE.Vector3(0.12, 0.75, -0.02);
 const _v = new THREE.Vector3();
 
 // Greifbares Objekt mit Physik (Gerät oder Gegenstand)
@@ -21,12 +23,20 @@ export class PhysItem {
         this.half = new THREE.Vector3(s.x / 2, s.y / 2, s.z / 2);
         this.mass = mass;
         game.scene.add(object);
-        this.body = game.physics.addDynamic(object, this.half, mass, { com });
+        // Dünne Dinge (USB-Stick, CD, Papier) bekommen eine etwas dickere Kollisionsbox (nach oben erweitert),
+        // sonst rutschen sie bei schnellem Fall durch die Tischplatte.
+        this.thin = this.half.y < 0.02;
+        const bodyHalf = this.half.clone();
+        bodyHalf.y = Math.max(bodyHalf.y, 0.008);
+        this.body = game.physics.addDynamic(object, bodyHalf, mass, { com: this.thin ? 1 : com });
+        this.respawnTimes = [];
         this.yaw = 0;
         this.liftY = 0.05;
     }
 
     tooltip() { return `${this.emoji} ${this.name}`.trim(); }
+    // Fallhöhe beim Erscheinen: dünne/leichte Dinge nur knapp über dem Tisch
+    dropHeight(big = 0.25) { return this.thin ? 0.03 : big; }
     canGrab() { return !this.sorted && !this.locked; }
 
     setPosition(p, yaw = null) {
@@ -85,6 +95,14 @@ export class PhysItem {
         if (this.held || this.sorted || this.visible === false || this.locked || this.noRespawn) { this.floorT = 0; return; }
         const y = this.object.position.y;
         if (y < -0.5) { this.respawnToDesk(); return; }
+        // dünne Dinge nicht zu schnell werden lassen (Tunneln durch die Platte)
+        if (this.thin) {
+            const v = this.body.velocity;
+            const sp = v.length();
+            if (sp > 3) v.scale(3 / sp, v);
+        }
+        // Im Zerstörmodus bleibt alles liegen, wo es hinfällt
+        if (this.game.destroy?.active) { this.floorT = 0; return; }
         // Boden (y = 0) – die Kartonbank liegt bei 0.42, der Tisch bei 0.75
         if (y < 0.3) {
             this.floorT = (this.floorT || 0) + dt;
@@ -92,17 +110,23 @@ export class PhysItem {
         } else this.floorT = 0;
     }
 
-    respawnToDesk() {
+    respawnToDesk(manual = false) {
         this.floorT = 0;
         const g = this.game;
         const from = this.object.position.clone();
-        const home = (this.home || new THREE.Vector3(-0.2, 0.75, 0.05)).clone();
+        let home = (this.home || new THREE.Vector3(-0.2, 0.75, 0.05)).clone();
+        // Schutz gegen Endlosschleifen: fällt etwas mehrmals kurz hintereinander herunter, kommt es auf einen sicheren Platz
+        const now = g.time;
+        this.respawnTimes = (this.respawnTimes || []).filter(t => now - t < 6);
+        this.respawnTimes.push(now);
+        if (manual) this.respawnTimes = [];
+        else if (this.respawnTimes.length >= 2) home = SAFE_SPOT.clone();
         g.guide?.burst(from.setY(Math.max(from.y, 0) + 0.05), [0xffffff, 0xd67c9c, 0xffd43b], 14, 0.6);
-        this.setPosition(home.clone().setY(home.y + 0.25), this.homeYaw ?? 0);
+        this.setPosition(home.clone().setY(home.y + this.dropHeight()), this.homeYaw ?? 0);
         g.guide?.burst(home.setY(home.y + 0.12), [0xffffff, 0xffd43b], 16, 0.7);
         g.audio.plop();
         this.onRespawn?.();
-        g.emit('respawned', this);
+        if (!manual) g.emit('respawned', this);
     }
 }
 
@@ -319,7 +343,7 @@ export class Device extends PhysItem {
         this.visible = true;
         this.object.visible = true;
         this.game.physics.makeDynamic(this.body);
-        this.setPosition(pos.clone().setY(pos.y + 0.45), yaw);
+        this.setPosition(pos.clone().setY(pos.y + this.dropHeight(0.45)), yaw);
         if (this.plug && !this.plug.isStick) {
             this.placePlugNear(pos);
             this.plug.object.visible = true;

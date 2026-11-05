@@ -149,6 +149,30 @@ export class Audio {
         this.tone(freq / 2, dur, { type: 'sine', vol: 0.08, delay, attack: 0.01 });
     }
 
+    // ---------- Zerstörmodus ----------
+    swoosh() { this.noise(0.18, { vol: 0.12, freq: 900, q: 0.8, type: 'bandpass' }); }
+    bonk(strength = 1) {
+        this.tone(140 + Math.random() * 60, 0.25, { type: 'triangle', vol: 0.28 * strength, slideTo: 60 });
+        this.noise(0.08, { vol: 0.25 * strength, freq: 1400, q: 1.2 });
+        this.tone(900 + Math.random() * 500, 0.12, { type: 'square', vol: 0.04 * strength, delay: 0.01 });
+    }
+    crash(strength = 1) {
+        this.noise(0.5, { vol: 0.32 * strength, freq: 2500, q: 0.6 });
+        this.noise(0.35, { vol: 0.3 * strength, freq: 220, q: 0.7, type: 'lowpass' });
+        for (let i = 0; i < 6; i++) this.tone(1500 + Math.random() * 3000, 0.07, { type: 'triangle', vol: 0.04, delay: 0.02 + i * 0.05 });
+    }
+    explosion() {
+        if (!this.ok) return;
+        this.noise(1.4, { vol: 0.6, freq: 500, q: 0.5, type: 'lowpass' });
+        this.noise(0.6, { vol: 0.35, freq: 2500, q: 0.4 });
+        this.tone(90, 1.1, { type: 'sine', vol: 0.5, slideTo: 28, attack: 0.005 });
+        this.tone(60, 1.4, { type: 'sawtooth', vol: 0.12, slideTo: 25 });
+    }
+    fuse(dur = 1.6) { for (let i = 0; i < dur * 12; i++) this.noise(0.06, { vol: 0.05, freq: 6000 + Math.random() * 2000, q: 2, delay: i / 12 }); }
+    pop() { this.tone(500 + Math.random() * 400, 0.12, { type: 'sine', vol: 0.18, slideTo: 1400 }); this.noise(0.04, { vol: 0.15, freq: 3000 }); }
+    squeak() { this.tone(1300, 0.18, { type: 'square', vol: 0.06, slideTo: 1900 }); this.tone(1900, 0.15, { type: 'square', vol: 0.05, slideTo: 1200, delay: 0.16 }); }
+    whoosh(up = true) { this.tone(up ? 200 : 700, 0.9, { type: 'sine', vol: 0.12, slideTo: up ? 700 : 150, attack: 0.1 }); }
+
     // ---------- Computer-Ausgabe (nur mit Lautsprechern) ----------
     pcBlip(freq = 880) { this.tone(freq, 0.1, { type: 'sine', vol: 0.12, bus: 'pc' }); }
     startupJingle() {

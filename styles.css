@@ -68,7 +68,9 @@ html, body {
     white-space: nowrap;
     transition: all 0.3s;
 }
-.chip.active { border-color: var(--accent); color: #fff; transform: scale(1.08); box-shadow: 0 0 12px rgba(214,124,156,0.6); }
+.chip.active { border-color: var(--accent); color: #fff; transform: scale(1.08); box-shadow: 0 0 12px rgba(214,124,156,0.6); pointer-events: auto; cursor: pointer; }
+.chip.active:hover { background: var(--accent); }
+.chip.active:hover::before { content: '↺ '; }
 .chip.done { border-color: var(--e); color: #bfe9cf; }
 .chip.done::after { content: ' ✓'; }
 
@@ -362,3 +364,39 @@ html, body {
 
 /* Die Fingerspitze der 3D-Hand ist der Zeiger */
 canvas.hand-cursor { cursor: none; }
+
+/* Zerstörmodus */
+.end-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.destroy-btn { background: linear-gradient(135deg, #ff6b3d, #d6336c); box-shadow: 0 0 18px rgba(255,107,61,0.55); animation: wobble 1.6s ease-in-out infinite; }
+@keyframes wobble { 0%, 100% { transform: rotate(-2deg) scale(1); } 50% { transform: rotate(2deg) scale(1.05); } }
+.destroy-bar {
+    position: fixed; left: 50%; top: 58px; transform: translateX(-50%);
+    display: flex; gap: 8px; z-index: 12; pointer-events: auto;
+    background: var(--panel); border: 2px solid var(--border); border-radius: 18px; padding: 8px 10px;
+}
+.destroy-bar button {
+    position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    min-width: 74px; padding: 6px 8px; border-radius: 12px; border: 2px solid #5a3a4c;
+    background: rgba(255,255,255,0.06); color: #fff; font: 600 12px 'Segoe UI', sans-serif; cursor: pointer;
+    transition: transform 0.15s, background 0.15s, border-color 0.15s;
+}
+.destroy-bar button span { font-size: 26px; line-height: 1.1; }
+.destroy-bar button i { position: absolute; top: 3px; right: 6px; font-style: normal; font-size: 10px; opacity: 0.6; }
+.destroy-bar button:hover { transform: translateY(-3px); background: rgba(255,255,255,0.14); }
+.destroy-bar button.active { border-color: #ffd43b; background: rgba(255,212,59,0.22); transform: translateY(-4px) scale(1.06); box-shadow: 0 0 14px rgba(255,212,59,0.5); }
+.destroy-bar button.reset { border-color: #3b7ddd; }
+.chaos-box {
+    position: fixed; top: 64px; right: 12px; z-index: 11; pointer-events: none; width: 200px;
+    background: var(--panel); border: 2px solid #ff6b3d; border-radius: 14px; padding: 8px 12px; text-align: center;
+}
+.chaos-label { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #ffb38a; }
+.chaos-bar { height: 12px; border-radius: 6px; background: rgba(255,255,255,0.12); overflow: hidden; margin: 4px 0; }
+#chaosFill { height: 100%; width: 0; background: linear-gradient(90deg, #ffd43b, #ff6b3d, #d6336c); transition: width 0.4s; }
+.chaos-pct { font: 900 26px 'Segoe UI', sans-serif; }
+.combo { font: 900 20px 'Comic Sans MS', 'Segoe UI', sans-serif; color: #ffd43b; min-height: 24px; text-shadow: 0 2px 0 #2a1a2e; }
+.combo.pop { animation: comboPop 0.35s ease; }
+@keyframes comboPop { from { transform: scale(1.6); } to { transform: scale(1); } }
+@media (max-width: 760px) {
+    .destroy-bar button { min-width: 50px; font-size: 10px; padding: 4px; }
+    .destroy-bar button span { font-size: 20px; }
+}

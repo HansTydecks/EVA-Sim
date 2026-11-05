@@ -26,8 +26,27 @@ Mikrofon-Freigabe benötigt – alles passiert virtuell.
 | 8 | Touchscreen (USB-C, lila) | Tippen (Blasen), Wischen (Fotos), Ziehen (Formen) – Eingabe **und** Ausgabe |
 | Finale | Maus, Tastatur, Lautsprecher, Bildschirm, Festplatte, Computer | alles einsortieren, Abschluss-Übersicht mit vier Spalten |
 
+Die Kartons stehen in zwei Reihen: vorne EINGABE und VERARBEITUNG, dahinter erhöht AUSGABE und SPEICHER.
+
 Nach jeder Station zeigt eine EVA(S)-Leiste, was Eingabe, Verarbeitung, Ausgabe und – wo etwas gespeichert wurde –
 Speicher waren. Danach wird das Gerät einsortiert. Falsch einsortierte Geräte hüpfen mit einer Erklärung aus dem Karton zurück.
+
+## Zerstörmodus 🔨
+
+Wer schnell fertig ist, kann auf dem Endbildschirm den **Zerstörmodus** starten (oder direkt mit `?boom` in der Adresse).
+Dann ist alles im Raum beweglich und darf kaputt gemacht werden – nur zum Spaß:
+
+| Taste | Werkzeug | Was passiert |
+|---|---|---|
+| 1 | 🔨 Hammer | Schwung mit Funken und Comic-Schriftzug; nach ein paar Treffern zerbricht das Ziel in Trümmer (Monitor bekommt erst Risse, der Tisch kracht nach mehreren Schlägen zusammen, das Fenster zersplittert) |
+| 2 | ✋ Werfen | Greifen wie sonst, aber mit Superkraft |
+| 3 | 💣 Bombe | Zündschnur, Explosion mit Lichtblitz, Stoßwelle, Rauch, Zeitlupe und Druckwelle |
+| 4 | 🪐 Schwerelos | Schwerkraft an/aus |
+| 5 | 🎉 Konfetti | Konfetti-Kanone mit Hüpfbällen |
+| – | 🧹 Alles neu | Raum neu aufbauen (startet direkt wieder im Zerstörmodus) |
+
+Effekte: Bloom (Leuchten) über `EffectComposer`/`UnrealBloomPass`, Funken als `Points`, Konfetti als `InstancedMesh`,
+Rauch- und Comic-Sprites, Kamera-Wackeln. Die Chaos-Anzeige zählt mit, wie viel schon kaputt ist.
 
 ## Physik-Spaß
 
@@ -43,6 +62,7 @@ Speicher waren. Danach wird das Gerät einsortiert. Falsch einsortierte Geräte 
 - **Linke Maustaste halten**: greifen · **loslassen**: ablegen oder werfen
 - **Mausrad**: gehaltenen Gegenstand drehen (z. B. die Webcam ausrichten)
 - **Bildschirmrand** oder **◀ Kartons / Tisch ▶**: umschauen
+- **Klick auf den leuchtenden Stations-Chip** oben: Gegenstände der Station zurück auf den Tisch (falls etwas herunterfällt oder verschwindet)
 - **Auf die eingesteckte Maus klicken**: Hand liegt auf der Maus, der Zeiger am Monitor bewegt sich mit;
   **Rechtsklick / Esc**: Maus loslassen
 - **Strg + S** oder **Enter**: am Computer speichern
@@ -55,7 +75,7 @@ Tipp: Falls der Browser die Mauszeiger-Sperre (Pointer-Lock) blockiert, `?nolock
 ## Technik
 
 - Statische Seite ohne Build-Schritt (GitHub-Pages-tauglich), ES-Module mit Importmap
-- Three.js 0.187 und cannon-es 0.20 liegen in `vendor/` – funktioniert auch ohne Internet im Schulnetz
+- Three.js 0.187 (inkl. Postprocessing-Addons) und cannon-es 0.20 liegen in `vendor/` – funktioniert auch ohne Internet im Schulnetz
 - Alle 3D-Modelle werden im Code aus Grundformen erzeugt, Töne mit der Web-Audio-API synthetisiert
 - Computer-Ausgaben sind nur hörbar, wenn die virtuellen Lautsprecher eingesteckt sind
 
@@ -76,7 +96,7 @@ src/scene/room.js, models.js   Raum, Schreibtisch, Kartons, alle Gerätemodelle
 src/interaction/               Greifhand, Kabel/Stecker/Buchsen, Kamera
 src/devices.js                 Geräte-Definitionen (Kategorie, Anschluss, Erklärung)
 src/computer/                  „EVA-OS“ auf dem Monitor und die Apps der Stationen
-src/game/                      Ablauf (Stationen, Hinweise), Sortier-Logik, Speicher (storage.js)
+src/game/                      Ablauf (Stationen, Hinweise), Sortier-Logik, Speicher (storage.js), Zerstörmodus (destruction.js)
 src/ui/                        HUD und 3D-Hilfen (Pfeil, Geisterhand)
 ```
 
